@@ -1,0 +1,38 @@
+@import 'tailwindcss';
+@import './styles/preview.css';
+
+:root {
+  color-scheme: light dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+  background: #0b0c10;
+}
+
+/* subtle page look outside the exportable area */
+.page-shell {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15), 0 20px 40px -12px rgba(0, 0, 0, 0.35);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #3a3d4a;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4b4f60;
+}
