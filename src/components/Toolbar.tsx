@@ -13,6 +13,7 @@ interface ToolbarProps {
   onToggleSettings: () => void
   fileCount: number
   onDownloadAll: (format: BatchFormat) => Promise<void>
+  onToggleFileDrawer: () => void
 }
 
 export default function Toolbar({
@@ -27,6 +28,7 @@ export default function Toolbar({
   onToggleSettings,
   fileCount,
   onDownloadAll,
+  onToggleFileDrawer,
 }: ToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState<'pdf' | 'docx' | null>(null)
@@ -72,22 +74,33 @@ export default function Toolbar({
   }
 
   return (
-    <header className="flex items-center gap-3 border-b border-white/5 bg-[#0b0c10] px-4 py-3">
+    <header className="flex flex-wrap items-center gap-2 border-b border-white/5 bg-[#0b0c10] px-3 py-2 sm:gap-3 sm:px-4 sm:py-3">
+      <button
+        type="button"
+        onClick={onToggleFileDrawer}
+        aria-label="Archivos"
+        className="rounded-md border border-white/10 p-1.5 text-white/70 hover:border-white/25 hover:text-white lg:hidden"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+
       <div className="flex items-center gap-2">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-400 to-fuchsia-500 text-sm font-bold text-white">
           M
         </div>
-        <span className="text-sm font-semibold text-white/90">MD Studio</span>
+        <span className="hidden text-sm font-semibold text-white/90 sm:inline">MD Studio</span>
       </div>
 
       <input
         value={fileName}
         onChange={(e) => onFileNameChange(e.target.value)}
-        className="ml-2 w-48 rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-white/80 outline-none focus:border-indigo-400/60"
+        className="w-full rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-white/80 outline-none focus:border-indigo-400/60 sm:ml-2 sm:w-48"
         placeholder="nombre-del-documento"
       />
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
         <input
           ref={fileInputRef}
           type="file"
@@ -167,13 +180,13 @@ export default function Toolbar({
           </>
         )}
 
-        <div className="mx-1 h-6 w-px bg-white/10" />
+        <div className="mx-1 hidden h-6 w-px bg-white/10 lg:block" />
 
         <button
           type="button"
           onClick={onToggleSettings}
           aria-pressed={settingsOpen}
-          className={`rounded-md border px-3 py-1.5 text-sm transition ${
+          className={`hidden rounded-md border px-3 py-1.5 text-sm transition lg:block ${
             settingsOpen
               ? 'border-indigo-400/70 bg-indigo-400/10 text-white'
               : 'border-white/10 text-white/70 hover:border-white/25 hover:text-white'

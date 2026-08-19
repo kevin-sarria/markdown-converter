@@ -14,11 +14,15 @@ function initialDocs(): DocFile[] {
   return [{ id: makeDocId(), name: 'mi-documento', markdown: SAMPLE_MARKDOWN }]
 }
 
+type MobileView = 'editor' | 'preview' | 'settings'
+
 export default function App() {
   const [docs, setDocs] = useState<DocFile[]>(initialDocs)
   const [activeId, setActiveId] = useState(docs[0].id)
   const [settings, setSettings] = useState<DocSettings>(DEFAULT_SETTINGS)
   const [settingsOpen, setSettingsOpen] = useState(true)
+  const [mobileView, setMobileView] = useState<MobileView>('editor')
+  const [fileDrawerOpen, setFileDrawerOpen] = useState(false)
   const previewRef = useRef<HTMLDivElement>(null)
 
   const activeDoc = docs.find((d) => d.id === activeId) ?? docs[0]
@@ -45,7 +49,10 @@ export default function App() {
     setActiveId(newDocs[0].id)
   }
 
-  const handleSelectDoc = (id: string) => setActiveId(id)
+  const handleSelectDoc = (id: string) => {
+    setActiveId(id)
+    setFileDrawerOpen(false)
+  }
 
   const handleRemoveDoc = (id: string) => {
     setDocs((prev) => {
@@ -83,6 +90,12 @@ export default function App() {
     )
   }
 
+  const mobileTabs: { key: MobileView; label: string }[] = [
+    { key: 'editor', label: 'Markdown' },
+    { key: 'preview', label: 'Vista previa' },
+    { key: 'settings', label: 'Estilo' },
+  ]
+
   return (
     <div className="flex h-screen flex-col bg-[#0b0c10]">
       <Toolbar
@@ -97,16 +110,59 @@ export default function App() {
         onToggleSettings={() => setSettingsOpen((v) => !v)}
         fileCount={docs.length}
         onDownloadAll={handleDownloadAll}
+        onToggleFileDrawer={() => setFileDrawerOpen((v) => !v)}
       />
-      <div className="flex min-h-0 flex-1">
-        <FileList docs={docs} activeId={activeDoc.id} onSelect={handleSelectDoc} onRemove={handleRemoveDoc} />
-        <div className="w-[34%] min-w-[300px] border-r border-white/5">
+
+      <div className="flex border-b border-white/5 bg-[#0b0c10] px-2 py-1.5 lg:hidden">
+        {mobileTabs.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            onClick={() => {
+              setMobileView(t.key)
+              if (t.key === 'settings') setSettingsOpen(true)
+            }}
+            className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${
+              mobileView === t.key ? 'bg-indigo-400/20 text-white' : 'text-white/50 hover:text-white/80'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="relative flex min-h-0 flex-1 flex-col lg:flex-row">
+        {fileDrawerOpen && (
+          <div className="fixed inset-0 z-40 flex lg:hidden">
+            <div className="absolute inset-0 bg-black/60" onClick={() => setFileDrawerOpen(false)} />
+            <div className="relative z-10 h-full">
+              <FileList docs={docs} activeId={activeDoc.id} onSelect={handleSelectDoc} onRemove={handleRemoveDoc} />
+            </div>
+          </div>
+        )}
+        <div className="hidden lg:flex">
+          <FileList docs={docs} activeId={activeDoc.id} onSelect={handleSelectDoc} onRemove={handleRemoveDoc} />
+        </div>
+
+        <div
+          className={`min-h-0 w-full border-r border-white/5 lg:w-[34%] lg:min-w-[300px] ${
+            mobileView === 'editor' ? 'flex flex-1' : 'hidden'
+          } lg:flex`}
+        >
           <Editor value={activeDoc.markdown} onChange={(markdown) => updateActiveDoc({ markdown })} />
         </div>
-        <div className="flex-1 overflow-auto bg-[#1a1b22]">
+        <div
+          className={`min-h-0 overflow-auto bg-[#1a1b22] ${
+            mobileView === 'preview' ? 'flex flex-1' : 'hidden'
+          } lg:flex lg:flex-1`}
+        >
           <PreviewPane ref={previewRef} markdown={activeDoc.markdown} settings={settings} />
         </div>
-        {settingsOpen && <SettingsPanel settings={settings} onChange={patchSettings} />}
+        {settingsOpen && (
+          <div className={`min-h-0 w-full lg:w-auto ${mobileView === 'settings' ? 'flex flex-1' : 'hidden'} lg:flex`}>
+            <SettingsPanel settings={settings} onChange={patchSettings} />
+          </div>
+        )}
       </div>
     </div>
   )

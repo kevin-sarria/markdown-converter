@@ -2,8 +2,18 @@ import type { CSSProperties } from 'react'
 import { getFontPairing, getTheme, type DocSettings } from './settings'
 import { MARGINS, PAGE_SIZES } from './themes'
 
+export interface PreviewVarsOptions {
+  /**
+   * Zeroes the vertical (top/bottom) padding — used only for the node handed to
+   * html2pdf for PDF export, where the vertical margin instead comes from
+   * html2pdf's own `margin` option so it repeats on every sliced page. See
+   * exportPdf.ts for the full explanation.
+   */
+  pdfMode?: boolean
+}
+
 /** Builds the CSS custom properties that drive .md-preview, as an inline style object. */
-export function buildPreviewVars(settings: DocSettings): CSSProperties {
+export function buildPreviewVars(settings: DocSettings, options: PreviewVarsOptions = {}): CSSProperties {
   const theme = getTheme(settings.themeId)
   const font = getFontPairing(settings.fontId)
   const page = PAGE_SIZES[settings.pageSize]
@@ -25,15 +35,16 @@ export function buildPreviewVars(settings: DocSettings): CSSProperties {
     ['--p-font-mono' as string]: font.mono,
     ['--p-font-size' as string]: `${settings.fontSizePt}pt`,
     ['--p-line-height' as string]: settings.lineHeight,
-    ['--p-margin' as string]: `${margin.mm}mm`,
+    ['--p-margin-x' as string]: `${margin.mm}mm`,
+    ['--p-margin-y' as string]: options.pdfMode ? '0mm' : `${margin.mm}mm`,
     ['--p-width' as string]: `${page.widthMm}mm`,
     ['--p-height' as string]: `${page.heightMm}mm`,
   }
 }
 
 /** Same variables, serialized as a CSS string (for standalone HTML export). */
-export function buildPreviewVarsCss(settings: DocSettings): string {
-  const vars = buildPreviewVars(settings) as Record<string, string | number>
+export function buildPreviewVarsCss(settings: DocSettings, options: PreviewVarsOptions = {}): string {
+  const vars = buildPreviewVars(settings, options) as Record<string, string | number>
   return Object.entries(vars)
     .map(([k, v]) => `${k}: ${v};`)
     .join(' ')

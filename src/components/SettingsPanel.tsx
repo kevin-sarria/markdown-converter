@@ -1,14 +1,45 @@
+import { useState } from 'react'
 import { COLOR_THEMES, FONT_PAIRINGS, MARGINS, PAGE_SIZES, type Margin, type PageSize } from '../lib/themes'
 import type { DocSettings } from '../lib/settings'
+import HeaderFooterPanel from './HeaderFooterPanel'
 
 interface SettingsPanelProps {
   settings: DocSettings
   onChange: (patch: Partial<DocSettings>) => void
 }
 
+type Tab = 'style' | 'headerFooter'
+
 export default function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
+  const [tab, setTab] = useState<Tab>('style')
+
   return (
-    <div className="flex h-full w-72 shrink-0 flex-col gap-6 overflow-y-auto border-l border-white/5 bg-[#0f1015] p-4">
+    <div className="flex h-full w-full shrink-0 flex-col gap-6 overflow-y-auto border-l border-white/5 bg-[#0f1015] p-4 lg:w-72">
+      <div className="flex gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
+        <button
+          type="button"
+          onClick={() => setTab('style')}
+          className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${
+            tab === 'style' ? 'bg-indigo-400/20 text-white' : 'text-white/50 hover:text-white/80'
+          }`}
+        >
+          Estilo
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('headerFooter')}
+          className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition ${
+            tab === 'headerFooter' ? 'bg-indigo-400/20 text-white' : 'text-white/50 hover:text-white/80'
+          }`}
+        >
+          Encabezado / Marca de agua
+        </button>
+      </div>
+
+      {tab === 'headerFooter' && <HeaderFooterPanel settings={settings} onChange={onChange} />}
+
+      {tab === 'style' && (
+        <>
       <section>
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-white/40">
           Paleta de colores
@@ -149,6 +180,8 @@ export default function SettingsPanel({ settings, onChange }: SettingsPanelProps
           ))}
         </div>
       </section>
+        </>
+      )}
     </div>
   )
 }

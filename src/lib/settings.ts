@@ -1,3 +1,4 @@
+import { DEFAULT_HEADER_FOOTER, DEFAULT_WATERMARK, type HeaderFooterSettings, type WatermarkSettings } from './headerFooter'
 import { COLOR_THEMES, FONT_PAIRINGS, type Margin, type PageSize } from './themes'
 
 export interface DocSettings {
@@ -7,6 +8,8 @@ export interface DocSettings {
   lineHeight: number
   pageSize: PageSize
   margin: Margin
+  headerFooter: HeaderFooterSettings
+  watermark: WatermarkSettings
 }
 
 export const DEFAULT_SETTINGS: DocSettings = {
@@ -16,6 +19,8 @@ export const DEFAULT_SETTINGS: DocSettings = {
   lineHeight: 1.6,
   pageSize: 'a4',
   margin: 'normal',
+  headerFooter: DEFAULT_HEADER_FOOTER,
+  watermark: DEFAULT_WATERMARK,
 }
 
 export function getTheme(id: string) {

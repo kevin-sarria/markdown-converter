@@ -4,6 +4,8 @@ import {
   convertMillimetersToTwip,
   Document,
   ExternalHyperlink,
+  Footer,
+  Header,
   ImageRun,
   LevelFormat,
   Packer,
@@ -18,6 +20,7 @@ import {
 } from 'docx'
 import { saveAs } from 'file-saver'
 import type { Token } from 'markdown-it'
+import { buildFooter, buildHeader } from './docxHeaderFooter'
 import { md } from './markdown'
 import { getFontPairing, getTheme, type DocSettings } from './settings'
 import { MARGINS, PAGE_SIZES } from './themes'
@@ -91,6 +94,11 @@ export async function buildDocxBlob(markdownText: string, settings: DocSettings)
     safeText,
   })
 
+  const hf = settings.headerFooter
+  const header = await buildHeader(hf, settings.watermark, font)
+  const footer = buildFooter(hf, font)
+  const showFirstPageBand = hf.enabled && !hf.showOnFirstPage
+
   const doc = new Document({
     numbering: { config: numberingConfigs },
     sections: [
@@ -108,7 +116,10 @@ export async function buildDocxBlob(markdownText: string, settings: DocSettings)
               right: convertMillimetersToTwip(margin.mm),
             },
           },
+          titlePage: showFirstPageBand,
         },
+        headers: header ? { default: header, ...(showFirstPageBand ? { first: new Header({ children: [] }) } : {}) } : undefined,
+        footers: footer ? { default: footer, ...(showFirstPageBand ? { first: new Footer({ children: [] }) } : {}) } : undefined,
         children: body.length > 0 ? body : [new Paragraph({})],
       },
     ],

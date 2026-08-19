@@ -1,5 +1,6 @@
 import { saveAs } from 'file-saver'
 import previewCss from '../styles/preview.css?raw'
+import { renderFooterBandHtml, renderHeaderBandHtml, renderWatermarkHtml } from './headerFooterMarkup'
 import { renderMarkdownToHtml } from './markdown'
 import { buildPreviewVarsCss } from './previewStyle'
 import type { DocSettings } from './settings'
@@ -10,7 +11,13 @@ const GOOGLE_FONTS_HREF =
 export function buildStandaloneHtml(markdown: string, settings: DocSettings, title: string): string {
   const body = renderMarkdownToHtml(markdown)
   const vars = buildPreviewVarsCss(settings)
+  const headerHtml = renderHeaderBandHtml(settings.headerFooter)
+  const footerHtml = renderFooterBandHtml(settings.headerFooter)
+  const watermarkHtml = renderWatermarkHtml(settings.watermark)
 
+  // The header/footer here render once, at the top/bottom of the document —
+  // a plain HTML file isn't paginated the way the PDF export is, so there's no
+  // reliable way to repeat them per printed page from pure HTML/CSS.
   return `<!doctype html>
 <html lang="es">
 <head>
@@ -24,8 +31,13 @@ export function buildStandaloneHtml(markdown: string, settings: DocSettings, tit
 </style>
 </head>
 <body>
-<div class="md-preview" style="${vars} box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 12px 28px -8px rgba(0,0,0,.25);">
+<div class="md-page-wrap" style="${vars} box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 12px 28px -8px rgba(0,0,0,.25);">
+${headerHtml}
+<div class="md-preview" style="${vars}">
 ${body}
+</div>
+${footerHtml}
+${watermarkHtml}
 </div>
 </body>
 </html>

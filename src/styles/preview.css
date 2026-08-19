@@ -4,7 +4,7 @@
   font-family: var(--p-font-body);
   font-size: var(--p-font-size);
   line-height: var(--p-line-height);
-  padding: var(--p-margin);
+  padding: var(--p-margin-y) var(--p-margin-x);
   box-sizing: border-box;
   width: var(--p-width);
   text-align: left;
@@ -160,4 +160,61 @@
 
 .md-preview input[type='checkbox'] {
   margin-right: 0.5em;
+}
+
+/* Header / footer bands + watermark overlay — shown once around the full
+   document for on-screen preview and standalone HTML export (not paginated).
+   The exported PDF repeats these per physical page separately, via jsPDF. */
+.md-page-wrap {
+  position: relative;
+  width: var(--p-width);
+}
+
+.md-header-band,
+.md-footer-band {
+  display: flex;
+  align-items: center;
+  gap: 0.75em;
+  width: var(--p-width);
+  box-sizing: border-box;
+  padding: 0.6em var(--p-margin-x);
+  font-family: var(--p-font-body);
+  font-size: 0.8em;
+  color: var(--p-muted);
+  background: var(--p-bg);
+}
+
+.md-hf-logo {
+  max-height: 2.4em;
+  width: auto;
+  display: block;
+}
+
+.md-hf-text {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.md-watermark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 5;
+}
+
+.md-watermark-text {
+  font-family: var(--p-font-heading);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.md-watermark-img {
+  max-width: 60%;
+  max-height: 60%;
+  object-fit: contain;
 }
