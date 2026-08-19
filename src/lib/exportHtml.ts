@@ -32,9 +32,13 @@ ${body}
 `
 }
 
+export function buildHtmlBlob(markdown: string, settings: DocSettings, title: string): Blob {
+  const html = buildStandaloneHtml(markdown, settings, title)
+  return new Blob([html], { type: 'text/html;charset=utf-8' })
+}
+
 export function exportToHtml(markdown: string, settings: DocSettings, fileName: string): void {
-  const html = buildStandaloneHtml(markdown, settings, fileName)
-  const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+  const blob = buildHtmlBlob(markdown, settings, fileName)
   saveAs(blob, `${fileName}.html`)
 }
 

@@ -1,34 +1,53 @@
-import { useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import type { BatchFormat } from '../lib/exportBatch'
 
 interface ToolbarProps {
   fileName: string
   onFileNameChange: (name: string) => void
-  onUploadFile: (file: File) => void
+  onUploadFiles: (files: FileList) => void
   onExportPdf: () => Promise<void>
   onExportDocx: () => Promise<void>
   onExportHtml: () => void
   onReset: () => void
   settingsOpen: boolean
   onToggleSettings: () => void
+  fileCount: number
+  onDownloadAll: (format: BatchFormat) => Promise<void>
 }
 
 export default function Toolbar({
   fileName,
   onFileNameChange,
-  onUploadFile,
+  onUploadFiles,
   onExportPdf,
   onExportDocx,
   onExportHtml,
   onReset,
   settingsOpen,
   onToggleSettings,
+  fileCount,
+  onDownloadAll,
 }: ToolbarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState<'pdf' | 'docx' | null>(null)
+  const [batchBusy, setBatchBusy] = useState<BatchFormat | null>(null)
+  const [batchMenuOpen, setBatchMenuOpen] = useState(false)
+  const batchMenuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!batchMenuOpen) return
+    const onClickAway = (e: MouseEvent) => {
+      if (batchMenuRef.current && !batchMenuRef.current.contains(e.target as Node)) {
+        setBatchMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onClickAway)
+    return () => document.removeEventListener('mousedown', onClickAway)
+  }, [batchMenuOpen])
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) onUploadFile(file)
+    const files = e.target.files
+    if (files && files.length > 0) onUploadFiles(files)
     e.target.value = ''
   }
 
@@ -39,6 +58,16 @@ export default function Toolbar({
       else await onExportDocx()
     } finally {
       setBusy(null)
+    }
+  }
+
+  const runBatch = async (format: BatchFormat) => {
+    setBatchMenuOpen(false)
+    setBatchBusy(format)
+    try {
+      await onDownloadAll(format)
+    } finally {
+      setBatchBusy(null)
     }
   }
 
@@ -59,7 +88,14 @@ export default function Toolbar({
       />
 
       <div className="ml-auto flex items-center gap-2">
-        <input ref={fileInputRef} type="file" accept=".md,.markdown,text/markdown" className="hidden" onChange={handleFileChange} />
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept=".md,.markdown,text/markdown"
+          className="hidden"
+          onChange={handleFileChange}
+        />
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
@@ -100,6 +136,36 @@ export default function Toolbar({
         >
           {busy === 'pdf' ? 'Generando…' : 'Exportar PDF'}
         </button>
+
+        {fileCount > 1 && (
+          <>
+            <div className="mx-1 h-6 w-px bg-white/10" />
+            <div className="relative" ref={batchMenuRef}>
+              <button
+                type="button"
+                disabled={batchBusy !== null}
+                onClick={() => setBatchMenuOpen((v) => !v)}
+                className="rounded-md border border-fuchsia-400/50 bg-fuchsia-400/10 px-3.5 py-1.5 text-sm font-medium text-white transition hover:border-fuchsia-400/80 disabled:opacity-50"
+              >
+                {batchBusy ? 'Convirtiendo…' : `Descargar todos (${fileCount})`}
+              </button>
+              {batchMenuOpen && (
+                <div className="absolute right-0 top-[calc(100%+4px)] z-10 w-40 overflow-hidden rounded-md border border-white/10 bg-[#15161c] shadow-lg shadow-black/40">
+                  {(['pdf', 'docx', 'html'] as BatchFormat[]).map((format) => (
+                    <button
+                      key={format}
+                      type="button"
+                      onClick={() => runBatch(format)}
+                      className="block w-full px-3 py-2 text-left text-sm text-white/75 transition hover:bg-white/10 hover:text-white"
+                    >
+                      {format === 'pdf' ? 'Todos a PDF (.zip)' : format === 'docx' ? 'Todos a Word (.zip)' : 'Todos a HTML (.zip)'}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
 
         <div className="mx-1 h-6 w-px bg-white/10" />
 

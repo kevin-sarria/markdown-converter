@@ -58,11 +58,7 @@ function hexPt(pt: number): number {
   return Math.round(pt * 2)
 }
 
-export async function exportToDocx(
-  markdownText: string,
-  settings: DocSettings,
-  fileName: string,
-): Promise<void> {
+export async function buildDocxBlob(markdownText: string, settings: DocSettings): Promise<Blob> {
   const theme = getTheme(settings.themeId)
   const font = getFontPairing(settings.fontId)
   const page = PAGE_SIZES[settings.pageSize]
@@ -118,7 +114,15 @@ export async function exportToDocx(
     ],
   })
 
-  const blob = await Packer.toBlob(doc)
+  return Packer.toBlob(doc)
+}
+
+export async function exportToDocx(
+  markdownText: string,
+  settings: DocSettings,
+  fileName: string,
+): Promise<void> {
+  const blob = await buildDocxBlob(markdownText, settings)
   saveAs(blob, `${fileName}.docx`)
 }
 
