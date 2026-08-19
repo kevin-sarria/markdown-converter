@@ -1,9 +1,10 @@
+import type { LogoItem } from './logos'
+
 export type HFAlign = 'left' | 'center' | 'right'
 
 export interface HeaderFooterSettings {
   enabled: boolean
-  logoDataUrl: string | null
-  logoWidthMm: number
+  logos: LogoItem[]
   headerText: string
   headerAlign: HFAlign
   footerText: string
@@ -26,8 +27,7 @@ export interface WatermarkSettings {
 
 export const DEFAULT_HEADER_FOOTER: HeaderFooterSettings = {
   enabled: false,
-  logoDataUrl: null,
-  logoWidthMm: 18,
+  logos: [],
   headerText: '',
   headerAlign: 'left',
   footerText: '',

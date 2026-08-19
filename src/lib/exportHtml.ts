@@ -1,6 +1,6 @@
 import { saveAs } from 'file-saver'
 import previewCss from '../styles/preview.css?raw'
-import { renderFooterBandHtml, renderHeaderBandHtml, renderWatermarkHtml } from './headerFooterMarkup'
+import { renderCoverPageHtml, renderFooterBandHtml, renderHeaderBandHtml, renderWatermarkHtml } from './headerFooterMarkup'
 import { renderMarkdownToHtml } from './markdown'
 import { buildPreviewVarsCss } from './previewStyle'
 import type { DocSettings } from './settings'
@@ -11,6 +11,7 @@ const GOOGLE_FONTS_HREF =
 export function buildStandaloneHtml(markdown: string, settings: DocSettings, title: string): string {
   const body = renderMarkdownToHtml(markdown)
   const vars = buildPreviewVarsCss(settings)
+  const coverHtml = renderCoverPageHtml(settings.coverPage)
   const headerHtml = renderHeaderBandHtml(settings.headerFooter)
   const footerHtml = renderFooterBandHtml(settings.headerFooter)
   const watermarkHtml = renderWatermarkHtml(settings.watermark)
@@ -32,6 +33,7 @@ export function buildStandaloneHtml(markdown: string, settings: DocSettings, tit
 </head>
 <body>
 <div class="md-page-wrap" style="${vars} box-shadow: 0 1px 3px rgba(0,0,0,.12), 0 12px 28px -8px rgba(0,0,0,.25);">
+${coverHtml}
 ${headerHtml}
 <div class="md-preview" style="${vars}">
 ${body}

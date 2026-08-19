@@ -1,24 +1,34 @@
 import {
   AlignmentType,
+  BorderStyle,
   Footer,
   Header,
   HorizontalPositionAlign,
   HorizontalPositionRelativeFrom,
   ImageRun,
+  PageBreak,
   PageNumber,
   Paragraph,
+  Table,
+  TableCell,
+  TableRow,
   TextRun,
   TextWrappingType,
   VerticalPositionAlign,
   VerticalPositionRelativeFrom,
+  WidthType,
   type ParagraphChild,
 } from 'docx'
+import type { CoverPageSettings } from './coverPage'
 import type { HeaderFooterSettings, WatermarkSettings } from './headerFooter'
+import { groupLogosByAlign, type LogoAlign, type LogoItem } from './logos'
 import type { getFontPairing } from './settings'
 
 type FontPairing = ReturnType<typeof getFontPairing>
 
 const PX_PER_MM = 96 / 25.4
+const NO_BORDER = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' }
+const NO_BORDERS = { top: NO_BORDER, bottom: NO_BORDER, left: NO_BORDER, right: NO_BORDER }
 
 interface ImageAsset {
   data: Uint8Array
@@ -60,8 +70,41 @@ async function loadImageAssetFromDataUrl(dataUrl: string): Promise<ImageAsset | 
   return { data: bytes, type, width, height }
 }
 
-function alignmentFor(align: 'left' | 'center' | 'right') {
+function alignmentFor(align: LogoAlign) {
   return align === 'left' ? AlignmentType.LEFT : align === 'right' ? AlignmentType.RIGHT : AlignmentType.CENTER
+}
+
+/** Loads a group of logos as ImageRuns, with a small spacer between consecutive ones. */
+async function buildLogoRuns(logos: LogoItem[], font: FontPairing): Promise<ParagraphChild[]> {
+  const runs: ParagraphChild[] = []
+  for (const logo of logos) {
+    const asset = await loadImageAssetFromDataUrl(logo.dataUrl)
+    if (!asset) continue
+    if (runs.length > 0) runs.push(new TextRun({ text: '  ', font: font.docx.body }))
+    const width = Math.round(logo.widthMm * PX_PER_MM)
+    const height = Math.round(width * (asset.height / asset.width))
+    runs.push(new ImageRun({ type: asset.type, data: asset.data, transformation: { width, height } }))
+  }
+  return runs
+}
+
+/** A borderless 1-row × 3-column table used for left/center/right layouts (header logos, cover logos). */
+function buildThreeSlotTable(cells: Record<LogoAlign, ParagraphChild[]>): Table | null {
+  const hasContent = cells.left.length > 0 || cells.center.length > 0 || cells.right.length > 0
+  if (!hasContent) return null
+
+  const cell = (align: LogoAlign) =>
+    new TableCell({
+      width: { size: 33.33, type: WidthType.PERCENTAGE },
+      borders: NO_BORDERS,
+      children: [new Paragraph({ alignment: alignmentFor(align), children: cells[align] })],
+    })
+
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    borders: { ...NO_BORDERS, insideHorizontal: NO_BORDER, insideVertical: NO_BORDER },
+    rows: [new TableRow({ children: [cell('left'), cell('center'), cell('right')] })],
+  })
 }
 
 /**
@@ -125,34 +168,36 @@ async function watermarkImageRun(wm: WatermarkSettings): Promise<ImageRun | null
 }
 
 /**
- * Builds the section's header, combining the logo/text header band and the
- * watermark (docx only allows one `default` header per section, so both live
- * in the same Header when both are enabled).
+ * Builds the section's header: a 3-column (left/center/right) table for the logos
+ * plus the header text in its aligned slot, and the watermark's floating image
+ * (docx only allows one `default` header per section, so both live here when
+ * both are enabled).
  */
 export async function buildHeader(hf: HeaderFooterSettings, watermark: WatermarkSettings, font: FontPairing): Promise<Header | undefined> {
-  const bandChildren: ParagraphChild[] = []
+  const cells: Record<LogoAlign, ParagraphChild[]> = { left: [], center: [], right: [] }
 
-  if (hf.enabled && hf.logoDataUrl) {
-    const asset = await loadImageAssetFromDataUrl(hf.logoDataUrl)
-    if (asset) {
-      const width = Math.round(hf.logoWidthMm * PX_PER_MM)
-      const height = Math.round(width * (asset.height / asset.width))
-      bandChildren.push(new ImageRun({ type: asset.type, data: asset.data, transformation: { width, height } }))
+  if (hf.enabled) {
+    const groups = groupLogosByAlign(hf.logos)
+    cells.left = await buildLogoRuns(groups.left, font)
+    cells.center = await buildLogoRuns(groups.center, font)
+    cells.right = await buildLogoRuns(groups.right, font)
+
+    if (hf.headerText) {
+      if (cells[hf.headerAlign].length > 0) cells[hf.headerAlign].push(new TextRun({ text: '  ', font: font.docx.body }))
+      cells[hf.headerAlign].push(new TextRun({ text: hf.headerText, font: font.docx.body, size: 18, color: '666666' }))
     }
-  }
-  if (hf.enabled && hf.headerText) {
-    if (bandChildren.length > 0) bandChildren.push(new TextRun({ text: '   ', font: font.docx.body }))
-    bandChildren.push(new TextRun({ text: hf.headerText, font: font.docx.body, size: 18, color: '666666' }))
   }
 
   const watermarkRun = watermark.enabled ? await watermarkImageRun(watermark) : null
+  const table = buildThreeSlotTable(cells)
 
-  if (bandChildren.length === 0 && !watermarkRun) return undefined
+  if (!table && !watermarkRun) return undefined
 
-  const paragraphChildren: ParagraphChild[] = watermarkRun ? [watermarkRun, ...bandChildren] : bandChildren
-  return new Header({
-    children: [new Paragraph({ alignment: alignmentFor(hf.headerAlign), children: paragraphChildren })],
-  })
+  const children: (Paragraph | Table)[] = []
+  if (watermarkRun) children.push(new Paragraph({ children: [watermarkRun] }))
+  if (table) children.push(table)
+
+  return new Header({ children })
 }
 
 export function buildFooter(hf: HeaderFooterSettings, font: FontPairing): Footer | undefined {
@@ -180,4 +225,46 @@ export function buildFooter(hf: HeaderFooterSettings, font: FontPairing): Footer
   return new Footer({
     children: [new Paragraph({ alignment: alignmentFor(hf.footerAlign), children })],
   })
+}
+
+/**
+ * Builds the leading cover-page content (logos row, title, subtitle) followed by
+ * a hard page break, meant to be prepended to the document body. See
+ * coverPage.ts's hasCoverContent for the check callers should use before calling
+ * this.
+ */
+export async function buildCoverPageBlocks(cover: CoverPageSettings, font: FontPairing): Promise<(Paragraph | Table)[]> {
+  const out: (Paragraph | Table)[] = []
+
+  if (cover.logos.length > 0) {
+    const groups = groupLogosByAlign(cover.logos)
+    const table = buildThreeSlotTable({
+      left: await buildLogoRuns(groups.left, font),
+      center: await buildLogoRuns(groups.center, font),
+      right: await buildLogoRuns(groups.right, font),
+    })
+    if (table) out.push(table)
+  }
+
+  out.push(new Paragraph({}))
+  if (cover.title) {
+    out.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 800, after: 200 },
+        children: [new TextRun({ text: cover.title, font: font.docx.heading, bold: true, size: 56 })],
+      }),
+    )
+  }
+  if (cover.subtitle) {
+    out.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        children: [new TextRun({ text: cover.subtitle, font: font.docx.body, size: 28, color: '666666' })],
+      }),
+    )
+  }
+  out.push(new Paragraph({ children: [new PageBreak()] }))
+
+  return out
 }

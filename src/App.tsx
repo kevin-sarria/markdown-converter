@@ -145,21 +145,26 @@ export default function App() {
         </div>
 
         <div
-          className={`min-h-0 w-full border-r border-white/5 lg:w-[34%] lg:min-w-[300px] ${
+          className={`min-h-0 min-w-0 w-full border-r border-white/5 lg:w-[34%] lg:min-w-[300px] ${
             mobileView === 'editor' ? 'flex flex-1' : 'hidden'
           } lg:flex`}
         >
           <Editor value={activeDoc.markdown} onChange={(markdown) => updateActiveDoc({ markdown })} />
         </div>
         <div
-          className={`min-h-0 overflow-auto bg-[#1a1b22] ${
+          className={`min-h-0 min-w-0 overflow-auto bg-[#1a1b22] ${
             mobileView === 'preview' ? 'flex flex-1' : 'hidden'
           } lg:flex lg:flex-1`}
         >
-          <PreviewPane ref={previewRef} markdown={activeDoc.markdown} settings={settings} />
+          <PreviewPane
+            ref={previewRef}
+            markdown={activeDoc.markdown}
+            settings={settings}
+            onMarkdownChange={(markdown) => updateActiveDoc({ markdown })}
+          />
         </div>
         {settingsOpen && (
-          <div className={`min-h-0 w-full lg:w-auto ${mobileView === 'settings' ? 'flex flex-1' : 'hidden'} lg:flex`}>
+          <div className={`min-h-0 min-w-0 w-full lg:w-auto ${mobileView === 'settings' ? 'flex flex-1' : 'hidden'} lg:flex`}>
             <SettingsPanel settings={settings} onChange={patchSettings} />
           </div>
         )}

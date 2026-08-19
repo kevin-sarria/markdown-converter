@@ -1,3 +1,4 @@
+import { DEFAULT_COVER_PAGE, type CoverPageSettings } from './coverPage'
 import { DEFAULT_HEADER_FOOTER, DEFAULT_WATERMARK, type HeaderFooterSettings, type WatermarkSettings } from './headerFooter'
 import { COLOR_THEMES, FONT_PAIRINGS, type Margin, type PageSize } from './themes'
 
@@ -10,6 +11,7 @@ export interface DocSettings {
   margin: Margin
   headerFooter: HeaderFooterSettings
   watermark: WatermarkSettings
+  coverPage: CoverPageSettings
 }
 
 export const DEFAULT_SETTINGS: DocSettings = {
@@ -21,6 +23,7 @@ export const DEFAULT_SETTINGS: DocSettings = {
   margin: 'normal',
   headerFooter: DEFAULT_HEADER_FOOTER,
   watermark: DEFAULT_WATERMARK,
+  coverPage: DEFAULT_COVER_PAGE,
 }
 
 export function getTheme(id: string) {

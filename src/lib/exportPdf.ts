@@ -1,6 +1,7 @@
 import html2pdf from 'html2pdf.js'
 import type { jsPDF } from 'jspdf'
 import { renderMarkdownToHtml } from './markdown'
+import { drawCoverPage } from './pdfCoverPage'
 import { applyHeaderFooterWatermark } from './pdfHeaderFooter'
 import { buildPreviewVarsCss } from './previewStyle'
 import type { DocSettings } from './settings'
@@ -39,15 +40,34 @@ function pdfOptions(settings: DocSettings, fileName: string) {
   }
 }
 
-/** Clones a content node into an off-screen, PDF-specific copy (zero vertical CSS padding — see pdfOptions above), ready to hand to html2pdf. */
+/**
+ * Mounts `node` off-screen inside a `height:0; overflow:hidden` wrapper, ready
+ * for html2pdf/html2canvas to capture. `node` itself is left in normal static
+ * flow — this html2pdf version's document-clone capture measures a zero height
+ * for anything given `position: fixed/absolute` (even far off-screen), so that
+ * common "hide it at left:-10000px" trick silently produces an empty PDF. Only
+ * the wrapper is hidden, which doesn't have this problem.
+ */
+function mountOffscreen(node: HTMLElement): HTMLElement {
+  const wrapper = document.createElement('div')
+  wrapper.style.height = '0'
+  wrapper.style.overflow = 'hidden'
+  wrapper.appendChild(node)
+  document.body.appendChild(wrapper)
+  return wrapper
+}
+
+/**
+ * Clones a content node into an off-screen, PDF-specific copy (zero vertical CSS
+ * padding — see pdfOptions above). The `pdf-export` class hides the on-screen page-
+ * break divider/label (see .pdf-export .page-break in preview.css) while keeping
+ * the underlying `break-before: page` that actually splits the PDF.
+ */
 function preparePdfNode(source: HTMLElement, settings: DocSettings): HTMLElement {
   const clone = source.cloneNode(true) as HTMLElement
   const vars = buildPreviewVarsCss(settings, { pdfMode: true })
   clone.setAttribute('style', `${clone.getAttribute('style') ?? ''}; ${vars}`)
-  clone.style.position = 'fixed'
-  clone.style.left = '-10000px'
-  clone.style.top = '0'
-  document.body.appendChild(clone)
+  clone.classList.add('pdf-export')
   return clone
 }
 
@@ -57,12 +77,16 @@ export async function exportToPdf(
   fileName: string,
 ): Promise<void> {
   const pdfNode = preparePdfNode(node, settings)
+  const wrapper = mountOffscreen(pdfNode)
   try {
     const worker = html2pdf().set(pdfOptions(settings, fileName)).from(pdfNode).toPdf()
-    await worker.get('pdf').then((pdf: jsPDF) => applyHeaderFooterWatermark(pdf, settings))
+    await worker.get('pdf').then((pdf: jsPDF) => {
+      const startPage = drawCoverPage(pdf, settings)
+      applyHeaderFooterWatermark(pdf, settings, startPage)
+    })
     await worker.save()
   } finally {
-    document.body.removeChild(pdfNode)
+    document.body.removeChild(wrapper)
   }
 }
 
@@ -78,20 +102,20 @@ export async function buildPdfBlob(
   fileName: string,
 ): Promise<Blob> {
   const node = document.createElement('div')
-  node.className = 'md-preview'
+  node.className = 'md-preview pdf-export'
   node.setAttribute('style', buildPreviewVarsCss(settings, { pdfMode: true }))
   node.innerHTML = renderMarkdownToHtml(markdown)
-  node.style.position = 'fixed'
-  node.style.left = '-10000px'
-  node.style.top = '0'
-  document.body.appendChild(node)
+  const wrapper = mountOffscreen(node)
 
   try {
     const worker = html2pdf().set(pdfOptions(settings, fileName)).from(node).toPdf()
-    await worker.get('pdf').then((pdf: jsPDF) => applyHeaderFooterWatermark(pdf, settings))
+    await worker.get('pdf').then((pdf: jsPDF) => {
+      const startPage = drawCoverPage(pdf, settings)
+      applyHeaderFooterWatermark(pdf, settings, startPage)
+    })
     const blob = (await worker.outputPdf('blob')) as Blob
     return blob
   } finally {
-    document.body.removeChild(node)
+    document.body.removeChild(wrapper)
   }
 }

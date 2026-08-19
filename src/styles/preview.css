@@ -174,6 +174,7 @@
 .md-footer-band {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.75em;
   width: var(--p-width);
   box-sizing: border-box;
@@ -184,6 +185,26 @@
   background: var(--p-bg);
 }
 
+.md-hf-slot {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  min-width: 0;
+}
+
+.md-hf-slot--left {
+  justify-content: flex-start;
+}
+
+.md-hf-slot--center {
+  flex: 1;
+  justify-content: center;
+}
+
+.md-hf-slot--right {
+  justify-content: flex-end;
+}
+
 .md-hf-logo {
   max-height: 2.4em;
   width: auto;
@@ -191,7 +212,6 @@
 }
 
 .md-hf-text {
-  flex: 1;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -217,4 +237,102 @@
   max-width: 60%;
   max-height: 60%;
   object-fit: contain;
+}
+
+/* App-generated cover page — a full page-sized block shown once before the
+   document content, both on screen and in the HTML export. */
+.md-cover-page {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: var(--p-width);
+  min-height: var(--p-height);
+  box-sizing: border-box;
+  padding: var(--p-margin-y) var(--p-margin-x);
+  background: var(--p-bg);
+  text-align: center;
+}
+
+.md-cover-logos {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+}
+
+.md-cover-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75em;
+}
+
+.md-cover-title {
+  margin: 0;
+  font-family: var(--p-font-heading);
+  color: var(--p-heading);
+  font-size: 2.4em;
+  font-weight: 700;
+}
+
+.md-cover-subtitle {
+  margin: 0;
+  font-family: var(--p-font-body);
+  color: var(--p-muted);
+  font-size: 1.2em;
+}
+
+/* Explicit page break marker (<!-- pagebreak --> in the Markdown). Visible as a
+   labeled divider on screen and in the HTML export — useful information there —
+   but forced invisible (while keeping the actual break) in the PDF export node,
+   see the .pdf-export override below. */
+.page-break {
+  break-before: page;
+  page-break-before: always;
+  position: relative;
+  margin: 1.5em 0;
+  border-top: 1px dashed var(--p-border);
+  text-align: center;
+}
+
+.page-break-label {
+  position: relative;
+  top: -0.7em;
+  display: inline-block;
+  padding: 0 0.6em;
+  background: var(--p-bg);
+  color: var(--p-muted);
+  font-size: 0.7em;
+  letter-spacing: 0.02em;
+}
+
+.pdf-export .page-break {
+  margin: 0;
+  border: none;
+  height: 0;
+  overflow: hidden;
+}
+
+/* Hover affordance for adding/removing page breaks directly in the preview —
+   the button itself is rendered by React (PreviewPane), this only styles it. */
+.md-pagebreak-affordance {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--p-accent);
+  background: var(--p-bg);
+  color: var(--p-accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }

@@ -9,6 +9,7 @@ import {
   ImageRun,
   LevelFormat,
   Packer,
+  PageBreak,
   Paragraph,
   ShadingType,
   Table,
@@ -20,7 +21,8 @@ import {
 } from 'docx'
 import { saveAs } from 'file-saver'
 import type { Token } from 'markdown-it'
-import { buildFooter, buildHeader } from './docxHeaderFooter'
+import { hasCoverContent } from './coverPage'
+import { buildCoverPageBlocks, buildFooter, buildHeader } from './docxHeaderFooter'
 import { md } from './markdown'
 import { getFontPairing, getTheme, type DocSettings } from './settings'
 import { MARGINS, PAGE_SIZES } from './themes'
@@ -97,7 +99,14 @@ export async function buildDocxBlob(markdownText: string, settings: DocSettings)
   const hf = settings.headerFooter
   const header = await buildHeader(hf, settings.watermark, font)
   const footer = buildFooter(hf, font)
-  const showFirstPageBand = hf.enabled && !hf.showOnFirstPage
+
+  // A cover page is always page 1 with a blank header/footer of its own — the
+  // "show on first page" toggle then refers to the first page of the body,
+  // which docx.js can't distinguish separately from page 1 when there's no
+  // cover, so it stops applying once a cover exists (see coverPage.ts plan).
+  const cover = settings.coverPage
+  const coverBlocks = hasCoverContent(cover) ? await buildCoverPageBlocks(cover, font) : []
+  const showFirstPageBand = coverBlocks.length > 0 || (hf.enabled && !hf.showOnFirstPage)
 
   const doc = new Document({
     numbering: { config: numberingConfigs },
@@ -120,7 +129,7 @@ export async function buildDocxBlob(markdownText: string, settings: DocSettings)
         },
         headers: header ? { default: header, ...(showFirstPageBand ? { first: new Header({ children: [] }) } : {}) } : undefined,
         footers: footer ? { default: footer, ...(showFirstPageBand ? { first: new Footer({ children: [] }) } : {}) } : undefined,
-        children: body.length > 0 ? body : [new Paragraph({})],
+        children: [...coverBlocks, ...(body.length > 0 ? body : [new Paragraph({})])],
       },
     ],
   })
@@ -248,6 +257,11 @@ function convertBlocks(
       }
       case 'hr': {
         out.push(hrParagraph(build))
+        cursor.i++
+        break
+      }
+      case 'page_break': {
+        out.push(new Paragraph({ children: [new PageBreak()] }))
         cursor.i++
         break
       }

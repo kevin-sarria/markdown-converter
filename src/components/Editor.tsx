@@ -5,7 +5,7 @@ interface EditorProps {
 
 export default function Editor({ value, onChange }: EditorProps) {
   return (
-    <div className="flex h-full flex-col bg-[#0f1015]">
+    <div className="flex h-full w-full min-w-0 flex-col bg-[#0f1015]">
       <div className="flex items-center justify-between border-b border-white/5 px-4 py-2">
         <span className="text-xs font-medium uppercase tracking-wide text-white/40">
           Markdown
