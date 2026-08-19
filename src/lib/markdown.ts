@@ -32,8 +32,7 @@ md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
 }
 
 // Recognizes a `<!-- pagebreak -->` line as its own block, so it can force a real
-// page break on export (see .page-break in preview.css) and be targeted by the
-// click-to-remove affordance in PreviewPane.
+// page break on export (see .page-break in preview.css).
 md.block.ruler.before(
   'paragraph',
   'page_break',
@@ -50,20 +49,13 @@ md.block.ruler.before(
   { alt: ['paragraph', 'reference', 'blockquote', 'list'] },
 )
 
-md.renderer.rules.page_break = (tokens, idx) => {
-  const line = tokens[idx].map?.[0] ?? 0
-  return `<div class="page-break" data-page-break data-line="${line}"><span class="page-break-label">Salto de página</span></div>\n`
-}
-
-// Tags every top-level block with the source line it starts on, so the preview
-// can map a click back to an exact line in the Markdown (see PreviewPane.tsx).
-md.core.ruler.push('annotate_source_lines', (state) => {
-  for (const token of state.tokens) {
-    if (token.map && token.nesting >= 0) {
-      token.attrSet('data-line', String(token.map[0]))
-    }
-  }
-})
+// `contenteditable="false"` makes this an atomic node wherever it ends up inside
+// the editable preview (see PreviewPane.tsx) — the same shape is produced by the
+// toolbar's "Insertar salto de página" button (EditorToolbar.tsx) and read back
+// by the same Turndown rule (htmlToMarkdown.ts), so a page break round-trips
+// identically whether it was typed as Markdown or inserted visually.
+md.renderer.rules.page_break = () =>
+  `<div class="page-break" data-page-break contenteditable="false"><span class="page-break-label">Salto de página</span></div>\n`
 
 export function renderMarkdownToHtml(source: string): string {
   return md.render(source || '')

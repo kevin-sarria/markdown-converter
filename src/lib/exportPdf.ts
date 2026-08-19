@@ -68,6 +68,9 @@ function preparePdfNode(source: HTMLElement, settings: DocSettings): HTMLElement
   const vars = buildPreviewVarsCss(settings, { pdfMode: true })
   clone.setAttribute('style', `${clone.getAttribute('style') ?? ''}; ${vars}`)
   clone.classList.add('pdf-export')
+  // `source` is the live, directly-editable preview node — the export copy is
+  // static, so drop the attribute rather than ship an "editable" PDF snapshot.
+  clone.removeAttribute('contenteditable')
   return clone
 }
 

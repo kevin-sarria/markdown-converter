@@ -315,24 +315,9 @@
   overflow: hidden;
 }
 
-/* Hover affordance for adding/removing page breaks directly in the preview —
-   the button itself is rendered by React (PreviewPane), this only styles it. */
-.md-pagebreak-affordance {
-  position: absolute;
-  z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.75rem;
-  height: 1.75rem;
-  padding: 0 0.5rem;
-  border-radius: 999px;
-  border: 1px solid var(--p-accent);
-  background: var(--p-bg);
-  color: var(--p-accent);
-  font-size: 0.75rem;
-  font-weight: 600;
-  line-height: 1;
-  cursor: pointer;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+/* #export-target is directly editable (see PreviewPane.tsx) — a quiet focus
+   ring instead of the browser's default outline. */
+.md-preview:focus {
+  outline: 2px solid transparent;
+  box-shadow: 0 0 0 2px var(--p-accent);
 }

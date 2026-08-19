@@ -1,7 +1,19 @@
-import { forwardRef, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type DragEvent as ReactDragEvent,
+  type ClipboardEvent as ReactClipboardEvent,
+} from 'react'
+import EditorToolbar from './EditorToolbar'
 import { renderCoverPageHtml, renderHeaderBandHtml, renderFooterBandHtml, renderWatermarkHtml } from '../lib/headerFooterMarkup'
+import { fileToDataUrl } from '../lib/headerFooter'
+import { htmlToMarkdown } from '../lib/htmlToMarkdown'
 import { renderMarkdownToHtml } from '../lib/markdown'
-import { insertPageBreakBeforeLine, removeMarkedLine } from '../lib/pageBreaks'
 import { buildPreviewVars } from '../lib/previewStyle'
 import type { DocSettings } from '../lib/settings'
 
@@ -11,13 +23,7 @@ interface PreviewPaneProps {
   onMarkdownChange: (markdown: string) => void
 }
 
-interface HoverTarget {
-  line: number
-  isBreak: boolean
-  top: number
-  left: number
-  width: number
-}
+const SYNC_DEBOUNCE_MS = 400
 
 /**
  * The forwarded ref points at the exact DOM node used for PDF export (the
@@ -33,10 +39,20 @@ interface HoverTarget {
  * ref'd #export-target node into a fresh, untransformed off-screen container
  * before rasterizing it, so the on-screen zoom never touches the export.
  *
- * Clicking a block in the rendered result adds/removes a page break there —
- * every top-level block is tagged with a `data-line` attribute (its source line,
- * from markdown-it's token.map, see markdown.ts) so a click can be translated
- * back into an edit of the underlying Markdown text (see pageBreaks.ts).
+ * #export-target is directly editable (Word-style, via EditorToolbar) — typing,
+ * formatting, dropping/pasting images, and inserting page breaks all happen
+ * right here. Markdown stays the single source of truth: edits get converted
+ * back with htmlToMarkdown() and pushed up through onMarkdownChange, the exact
+ * same prop the plain-text Markdown editor uses, so both panels drive the same
+ * state and every exporter keeps reading plain Markdown as before.
+ *
+ * The tricky part is not fighting the cursor: this node's contents are written
+ * imperatively (a useEffect doing `el.innerHTML = ...`), not via React's
+ * dangerouslySetInnerHTML, and skipNextSyncRef distinguishes "this change came
+ * from typing right here, the DOM is already correct, don't touch it" from
+ * "this change came from the plain-text editor / a file upload, re-render the
+ * HTML from scratch." Rewriting a focused contentEditable's innerHTML on every
+ * keystroke would otherwise reset the cursor to the start on every keystroke.
  */
 const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function PreviewPane(
   { markdown, settings, onMarkdownChange },
@@ -51,9 +67,11 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
 
   const containerRef = useRef<HTMLDivElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
+  const exportTargetRef = useRef<HTMLDivElement>(null)
   const [pageSize, setPageSize] = useState({ width: 0, height: 0 })
   const [scale, setScale] = useState(1)
-  const [hover, setHover] = useState<HoverTarget | null>(null)
+
+  useImperativeHandle(ref, () => exportTargetRef.current as HTMLDivElement)
 
   useEffect(() => {
     const container = containerRef.current
@@ -73,67 +91,84 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
     return () => ro.disconnect()
   }, [html, vars, headerHtml, footerHtml, coverHtml])
 
-  const handleMouseMove = (e: ReactMouseEvent<HTMLDivElement>) => {
-    const target = e.target as HTMLElement
-    if (target.closest('.md-pagebreak-affordance')) return
-
-    const block = target.closest<HTMLElement>('[data-line]')
-    const container = containerRef.current
-    if (!block || !container) {
-      setHover(null)
+  // Imperative content sync — see the component doc comment above for why.
+  const skipNextSyncRef = useRef(false)
+  useEffect(() => {
+    const el = exportTargetRef.current
+    if (!el) return
+    if (skipNextSyncRef.current) {
+      skipNextSyncRef.current = false
       return
     }
+    el.innerHTML = html
+  }, [html])
 
-    const blockRect = block.getBoundingClientRect()
-    const containerRect = container.getBoundingClientRect()
-    setHover({
-      line: Number(block.getAttribute('data-line')),
-      isBreak: block.hasAttribute('data-page-break'),
-      top: blockRect.top - containerRect.top + container.scrollTop,
-      left: blockRect.left - containerRect.left + container.scrollLeft,
-      width: blockRect.width,
-    })
+  const syncFromDom = useCallback(() => {
+    const el = exportTargetRef.current
+    if (!el) return
+    const newMarkdown = htmlToMarkdown(el.innerHTML)
+    if (newMarkdown === markdown) return
+    skipNextSyncRef.current = true
+    onMarkdownChange(newMarkdown)
+  }, [markdown, onMarkdownChange])
+
+  const debounceRef = useRef<number | undefined>(undefined)
+  const handleInput = () => {
+    window.clearTimeout(debounceRef.current)
+    debounceRef.current = window.setTimeout(syncFromDom, SYNC_DEBOUNCE_MS)
+  }
+  const handleBlur = () => {
+    window.clearTimeout(debounceRef.current)
+    syncFromDom()
   }
 
-  const handleAffordanceClick = () => {
-    if (!hover) return
-    const next = hover.isBreak ? removeMarkedLine(markdown, hover.line) : insertPageBreakBeforeLine(markdown, hover.line)
-    onMarkdownChange(next)
-    setHover(null)
+  const insertImageAtCursor = async (file: File) => {
+    if (!file.type.startsWith('image/')) return
+    const dataUrl = await fileToDataUrl(file)
+    exportTargetRef.current?.focus()
+    document.execCommand('insertImage', false, dataUrl)
+    syncFromDom()
+  }
+
+  const handleDrop = (e: ReactDragEvent<HTMLDivElement>) => {
+    const file = e.dataTransfer.files?.[0]
+    if (!file) return
+    e.preventDefault()
+    insertImageAtCursor(file)
+  }
+
+  const handlePaste = (e: ReactClipboardEvent<HTMLDivElement>) => {
+    const item = Array.from(e.clipboardData.items).find((it) => it.type.startsWith('image/'))
+    const file = item?.getAsFile()
+    if (!file) return
+    e.preventDefault()
+    insertImageAtCursor(file)
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="relative flex w-full min-w-0 justify-center overflow-x-auto py-8 px-4"
-      onMouseMove={handleMouseMove}
-      onMouseLeave={() => setHover(null)}
-      onScroll={() => setHover(null)}
-    >
-      {hover && (
-        <button
-          type="button"
-          className="md-pagebreak-affordance"
-          style={{ top: hover.top - 14, left: hover.left + hover.width / 2 - 14 }}
-          onClick={handleAffordanceClick}
-          title={hover.isBreak ? 'Quitar salto de página' : 'Insertar salto de página aquí'}
-        >
-          {hover.isBreak ? '×' : '+'}
-        </button>
-      )}
-      <div style={{ width: pageSize.width * scale || undefined, height: pageSize.height * scale || undefined }}>
-        <div ref={pageRef} className="md-page-wrap page-shell" style={{ ...vars, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
-          {coverHtml && <div dangerouslySetInnerHTML={{ __html: coverHtml }} />}
-          {headerHtml && <div dangerouslySetInnerHTML={{ __html: headerHtml }} />}
-          <div
-            ref={ref}
-            id="export-target"
-            className="md-preview"
-            style={vars}
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-          {footerHtml && <div dangerouslySetInnerHTML={{ __html: footerHtml }} />}
-          {watermarkHtml && <div dangerouslySetInnerHTML={{ __html: watermarkHtml }} />}
+    <div className="flex min-h-0 w-full min-w-0 flex-col">
+      <EditorToolbar editableRef={exportTargetRef} onEdited={handleInput} />
+      <div ref={containerRef} className="flex w-full min-w-0 flex-1 justify-center overflow-x-auto py-8 px-4">
+        <div style={{ width: pageSize.width * scale || undefined, height: pageSize.height * scale || undefined }}>
+          <div ref={pageRef} className="md-page-wrap page-shell" style={{ ...vars, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
+            {coverHtml && <div dangerouslySetInnerHTML={{ __html: coverHtml }} />}
+            {headerHtml && <div dangerouslySetInnerHTML={{ __html: headerHtml }} />}
+            <div
+              ref={exportTargetRef}
+              id="export-target"
+              className="md-preview"
+              style={vars}
+              contentEditable
+              suppressContentEditableWarning
+              onInput={handleInput}
+              onBlur={handleBlur}
+              onDrop={handleDrop}
+              onDragOver={(e) => e.preventDefault()}
+              onPaste={handlePaste}
+            />
+            {footerHtml && <div dangerouslySetInnerHTML={{ __html: footerHtml }} />}
+            {watermarkHtml && <div dangerouslySetInnerHTML={{ __html: watermarkHtml }} />}
+          </div>
         </div>
       </div>
     </div>
