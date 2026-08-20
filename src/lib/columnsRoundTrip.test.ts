@@ -161,3 +161,31 @@ describe('documents without columns are untouched', () => {
     expect(roundTrip(back)).toBe(back)
   })
 })
+
+describe('content the browser dropped somewhere odd', () => {
+  test('an image dropped onto a page break is kept, not swallowed by it', () => {
+    // Dragging an image around the preview hands it to the browser's own
+    // contentEditable move, which will happily park it inside the page-break
+    // node. The break must not eat what landed in it.
+    const html =
+      '<p>antes</p>' +
+      '<div class="page-break" data-page-break contenteditable="false">' +
+      '<span class="page-break-label">Salto de página</span>' +
+      '<img src="logo.png" alt="Logo">' +
+      '</div>'
+
+    const back = fromHtml(html)
+
+    expect(back).toContain('logo.png')
+    expect(back).toContain('<!-- pagebreak -->')
+    expect(back).toContain('antes')
+  })
+
+  test('the page break label is never mistaken for content', () => {
+    const html =
+      '<div class="page-break" data-page-break contenteditable="false">' +
+      '<span class="page-break-label">Salto de página</span></div>'
+
+    expect(fromHtml(html)).not.toContain('Salto de página')
+  })
+})

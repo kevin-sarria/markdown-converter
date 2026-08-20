@@ -4,6 +4,8 @@ import { columnsPlugin } from './columnsPlugin'
 import { parseImageWidthFragment } from './imageWidth'
 
 export const PAGE_BREAK_MARKER = '<!-- pagebreak -->'
+/** The break's own on-screen label — chrome, never the user's content. */
+export const PAGE_BREAK_LABEL_CLASS = 'page-break-label'
 
 export const md: MarkdownItInstance = new MarkdownIt({
   html: false,

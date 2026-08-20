@@ -12,7 +12,7 @@ import {
   ROW_OPEN_PREFIX,
   type ColumnAlign,
 } from './columns'
-import { PAGE_BREAK_MARKER } from './markdown'
+import { PAGE_BREAK_LABEL_CLASS, PAGE_BREAK_MARKER } from './markdown'
 
 /**
  * Converts the HTML produced by editing the WYSIWYG preview (PreviewPane.tsx)
@@ -37,9 +37,24 @@ const turndownService = new TurndownService({
 // Atomic page-break node (see the `page_break` renderer rule in markdown.ts and
 // the "Insertar salto de página" button in EditorToolbar.tsx — both produce the
 // same `[data-page-break]` shape, so this one rule round-trips either source).
+//
+// It used to emit just the marker and drop whatever was inside. Marking the
+// node `contenteditable="false"` stops the caret getting in, but not a drag:
+// dropping an image while moving it around the preview parks it inside the
+// break, and the next sync deleted it without a trace. Anything that lands in
+// here comes back out — everything except the break's own label, which is
+// chrome this rule put there itself.
 turndownService.addRule('pageBreak', {
-  filter: (node) => node.hasAttribute('data-page-break'),
-  replacement: () => `\n\n${PAGE_BREAK_MARKER}\n\n`,
+  filter: (node) => node.nodeType === 1 && node.hasAttribute('data-page-break'),
+  replacement: (_content, node) => {
+    const stray = Array.from((node as HTMLElement).childNodes)
+      .filter((n) => !(n.nodeType === 1 && (n as Element).classList.contains(PAGE_BREAK_LABEL_CLASS)))
+      .map((n) => (n.nodeType === 1 ? (n as Element).outerHTML : (n.textContent ?? '')))
+      .join('')
+
+    const rescued = turndownService.turndown(stray).trim()
+    return rescued ? `\n\n${PAGE_BREAK_MARKER}\n\n${rescued}\n\n` : `\n\n${PAGE_BREAK_MARKER}\n\n`
+  },
 })
 
 /**
