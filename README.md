@@ -43,6 +43,11 @@ una hoja impresa donde colocás cada cosa donde quieras:
   elemento no es editable: por eso un arrastre mueve la caja en vez de entregarle
   el contenido al navegador.
 - **Clic en un hueco** de la página para añadir texto o una imagen justo ahí.
+- Con un cuadro seleccionado, su barra trae **tamaño de letra, color,
+  alineación y tipografía**. El color ofrece la paleta del documento y un
+  selector para el tuyo. Vacío o sin marcar significa "sigue al documento".
+- La **negrita y la cursiva** de la barra principal funcionan dentro del cuadro,
+  palabra por palabra, como en cualquier texto.
 
 En el `.md` se guarda así:
 
@@ -61,6 +66,22 @@ En el `.md` se guarda así:
 ancho W; `WxH` fija también el alto, y sin H el elemento crece con su contenido.
 Todo va en **porcentajes de la página**, nunca en milímetros: así la maquetación
 no se descoloca al cambiar de A4 a Carta ni al ajustar los márgenes.
+
+Detrás pueden ir el estilo del cuadro, todos opcionales:
+
+```markdown
+:: en 12,45 76 size=26 color=#0b2a6b align=centro font=titulo
+```
+
+`size` en puntos, `color` en hex, `align` entre `izquierda`/`centro`/`derecha` y
+`font` entre `titulo`/`texto`/`mono` (las tipografías del tema elegido). Lo que
+no se pone se hereda del documento.
+
+Ese estilo es **del cuadro, no de las palabras**. Markdown sabe expresar negrita
+y cursiva, y ésas siguen funcionando dentro del cuadro; pero no tiene forma de
+decir "26pt azul marino". Guardarlo en el cuadro es lo que permite que el
+documento siga siendo Markdown en vez de convertirse en HTML — que era la otra
+salida, y abría la puerta a que Markdown pegado de terceros inyectara HTML.
 
 Una página en lienzo ocupa exactamente una página impresa. En PDF y HTML sale tal
 cual. En Word cada elemento llega anclado a su posición con un marco, así que el
