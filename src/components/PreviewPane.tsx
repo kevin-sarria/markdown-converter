@@ -11,6 +11,7 @@ import {
 } from 'react'
 import CanvasItemMenu from './CanvasItemMenu'
 import CanvasOverlay from './CanvasOverlay'
+import CanvasPageMenu from './CanvasPageMenu'
 import ColumnDividers from './ColumnDividers'
 import ColumnsRowMenu from './ColumnsRowMenu'
 import EditorToolbar from './EditorToolbar'
@@ -157,9 +158,14 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
   }
 
   const makeMouseDownHandler = (region: EditableMarkdownRegion) => (e: ReactMouseEvent<HTMLDivElement>) => {
-    const item = itemOf(e.target as HTMLElement)
-    const page = item && canvasOf(item)
-    if (item && page) canvas.handleItemMouseDown(e, { item, canvas: page, syncNow: region.syncNow })
+    const target = e.target as HTMLElement
+    const item = itemOf(target)
+    const page = canvasOf(target)
+    if (!page) return
+
+    if (item) canvas.handleItemMouseDown(e, { item, canvas: page, syncNow: region.syncNow })
+    // Empty space on the page: offer to put something there.
+    else canvas.handlePageMouseDown(e, page, region.syncNow)
   }
 
   const handleDoubleClick = (e: ReactMouseEvent<HTMLDivElement>) => {
@@ -284,6 +290,7 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
         <ColumnDividers selection={columnsRow.selection} containerRef={containerRef} />
         <CanvasOverlay editor={canvas} containerRef={containerRef} />
         <CanvasItemMenu editor={canvas} containerRef={containerRef} />
+        <CanvasPageMenu editor={canvas} containerRef={containerRef} />
         {sideDrop.guide && (
           <div
             className="md-side-drop-guide"

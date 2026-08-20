@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { readItem, writeItem, type CanvasItem } from '../lib/canvas'
-import { canvasOf, itemOf, siblingBoxes } from '../lib/canvasDom'
+import { addItem, canvasOf, itemOf, siblingBoxes } from '../lib/canvasDom'
 import { snapItem, type SnapGuide } from '../lib/canvasSnap'
 
 /** How far an arrow key nudges a selected item, in percent of the page. */
@@ -16,8 +16,17 @@ export interface CanvasSelection {
   syncNow: () => void
 }
 
+export interface CanvasPageSelection {
+  canvas: HTMLElement
+  syncNow: () => void
+  /** Where on the page the user last clicked, in percent — where a new item lands. */
+  at: { x: number; y: number }
+}
+
 export interface CanvasEditor {
   selection: CanvasSelection | null
+  /** The canvas itself, selected by clicking its empty space. */
+  page: CanvasPageSelection | null
   guides: SnapGuide[]
   dragging: boolean
   /** True while the selected item has text editing switched on. */
@@ -32,6 +41,10 @@ export interface CanvasEditor {
   bringToFront: () => void
   sendToBack: () => void
   remove: () => void
+  /** Click on a canvas's empty space: selects the page and remembers where. */
+  handlePageMouseDown: (e: ReactMouseEvent, canvas: HTMLElement, syncNow: () => void) => void
+  addTextItem: () => void
+  addImageItem: (dataUrl: string) => void
 }
 
 interface DragState {
@@ -66,6 +79,7 @@ const DRAGGING_CLASS = 'is-dragging'
  */
 export function useCanvasEditor(): CanvasEditor {
   const [selection, setSelection] = useState<CanvasSelection | null>(null)
+  const [page, setPage] = useState<CanvasPageSelection | null>(null)
   const [guides, setGuides] = useState<SnapGuide[]>([])
   const [dragging, setDragging] = useState(false)
   const [editingText, setEditingText] = useState(false)
@@ -85,6 +99,7 @@ export function useCanvasEditor(): CanvasEditor {
         return next
       })
       setEditingText(false)
+      if (next) setPage(null)
     },
     [stopTextEditing],
   )
@@ -204,8 +219,40 @@ export function useCanvasEditor(): CanvasEditor {
     [selection, select],
   )
 
+  const handlePageMouseDown = useCallback(
+    (e: ReactMouseEvent, canvas: HTMLElement, syncNow: () => void) => {
+      const rect = canvas.getBoundingClientRect()
+      select(null)
+      setPage({
+        canvas,
+        syncNow,
+        at: {
+          x: ((e.clientX - rect.left) / rect.width) * 100,
+          y: ((e.clientY - rect.top) / rect.height) * 100,
+        },
+      })
+    },
+    [select],
+  )
+
+  // A new item lands where the click was, not in a fixed corner where it would
+  // sit on top of whatever is already there.
+  const addAtClick = useCallback(
+    (html: string, width: number) => {
+      if (!page) return
+      addItem(page.canvas, html, { x: page.at.x, y: page.at.y, w: width, h: null })
+      page.syncNow()
+      setPage(null)
+    },
+    [page],
+  )
+
   return {
     selection,
+    page,
+    handlePageMouseDown,
+    addTextItem: useCallback(() => addAtClick('<p>Texto nuevo</p>', 40), [addAtClick]),
+    addImageItem: useCallback((dataUrl: string) => addAtClick(`<p><img src="${dataUrl}"></p>`, 25), [addAtClick]),
     guides,
     dragging,
     editingText,
