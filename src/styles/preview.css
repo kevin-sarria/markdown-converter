@@ -284,6 +284,27 @@
   font-size: 1.2em;
 }
 
+/* Title/subtitle are directly editable (EditableText) — a placeholder shows
+   only while genuinely empty, and a quiet focus ring matches .md-preview:focus. */
+.md-cover-title,
+.md-cover-subtitle {
+  min-width: 2em;
+  outline: none;
+  border-radius: 4px;
+}
+
+.md-cover-title:focus,
+.md-cover-subtitle:focus {
+  box-shadow: 0 0 0 2px var(--p-accent);
+}
+
+.md-cover-title:empty::before,
+.md-cover-subtitle:empty::before {
+  content: attr(data-placeholder);
+  color: var(--p-muted);
+  opacity: 0.6;
+}
+
 /* Explicit page break marker (<!-- pagebreak --> in the Markdown). Visible as a
    labeled divider on screen and in the HTML export — useful information there —
    but forced invisible (while keeping the actual break) in the PDF export node,

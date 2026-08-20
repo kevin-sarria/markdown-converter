@@ -9,18 +9,21 @@ import {
   type DragEvent as ReactDragEvent,
   type ClipboardEvent as ReactClipboardEvent,
 } from 'react'
+import EditableText from './EditableText'
 import EditorToolbar from './EditorToolbar'
-import { renderCoverPageHtml, renderHeaderBandHtml, renderFooterBandHtml, renderWatermarkHtml } from '../lib/headerFooterMarkup'
+import { logoGroupsHtml, renderHeaderBandHtml, renderFooterBandHtml, renderWatermarkHtml } from '../lib/headerFooterMarkup'
 import { fileToDataUrl } from '../lib/headerFooter'
 import { htmlToMarkdown } from '../lib/htmlToMarkdown'
 import { renderMarkdownToHtml } from '../lib/markdown'
 import { buildPreviewVars } from '../lib/previewStyle'
+import type { CoverPageSettings } from '../lib/coverPage'
 import type { DocSettings } from '../lib/settings'
 
 interface PreviewPaneProps {
   markdown: string
   settings: DocSettings
   onMarkdownChange: (markdown: string) => void
+  onCoverPageChange: (patch: Partial<CoverPageSettings>) => void
 }
 
 const SYNC_DEBOUNCE_MS = 400
@@ -55,12 +58,13 @@ const SYNC_DEBOUNCE_MS = 400
  * keystroke would otherwise reset the cursor to the start on every keystroke.
  */
 const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function PreviewPane(
-  { markdown, settings, onMarkdownChange },
+  { markdown, settings, onMarkdownChange, onCoverPageChange },
   ref,
 ) {
+  const cover = settings.coverPage
   const html = useMemo(() => renderMarkdownToHtml(markdown), [markdown])
   const vars = useMemo(() => buildPreviewVars(settings), [settings])
-  const coverHtml = useMemo(() => renderCoverPageHtml(settings.coverPage), [settings.coverPage])
+  const coverLogosHtml = useMemo(() => logoGroupsHtml(cover.logos), [cover.logos])
   const headerHtml = useMemo(() => renderHeaderBandHtml(settings.headerFooter), [settings.headerFooter])
   const footerHtml = useMemo(() => renderFooterBandHtml(settings.headerFooter), [settings.headerFooter])
   const watermarkHtml = useMemo(() => renderWatermarkHtml(settings.watermark), [settings.watermark])
@@ -89,7 +93,7 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
     ro.observe(container)
     ro.observe(page)
     return () => ro.disconnect()
-  }, [html, vars, headerHtml, footerHtml, coverHtml])
+  }, [html, vars, headerHtml, footerHtml, cover.enabled, cover.title, cover.subtitle, coverLogosHtml])
 
   // Imperative content sync — see the component doc comment above for why.
   const skipNextSyncRef = useRef(false)
@@ -151,7 +155,36 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
       <div ref={containerRef} className="flex w-full min-w-0 flex-1 justify-center overflow-x-auto py-8 px-4">
         <div style={{ width: pageSize.width * scale || undefined, height: pageSize.height * scale || undefined }}>
           <div ref={pageRef} className="md-page-wrap page-shell" style={{ ...vars, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
-            {coverHtml && <div dangerouslySetInnerHTML={{ __html: coverHtml }} />}
+            {/* Shown whenever the cover is turned on, even with nothing typed yet —
+                unlike the export paths (headerFooterMarkup.ts's renderCoverPageHtml,
+                pdfCoverPage.ts, docxHeaderFooter.ts), which skip a genuinely empty
+                cover, this needs to render blank so there's something to click into. */}
+            {cover.enabled && (
+              <>
+                <div className="md-cover-page">
+                  {cover.logos.length > 0 && (
+                    <div className="md-cover-logos" dangerouslySetInnerHTML={{ __html: coverLogosHtml }} />
+                  )}
+                  <div className="md-cover-body">
+                    <EditableText
+                      as="h1"
+                      className="md-cover-title"
+                      value={cover.title}
+                      placeholder="Título del documento"
+                      onChange={(title) => onCoverPageChange({ title })}
+                    />
+                    <EditableText
+                      as="p"
+                      className="md-cover-subtitle"
+                      value={cover.subtitle}
+                      placeholder="Subtítulo, fecha, autor…"
+                      onChange={(subtitle) => onCoverPageChange({ subtitle })}
+                    />
+                  </div>
+                </div>
+                <div className="page-break" data-page-break />
+              </>
+            )}
             {headerHtml && <div dangerouslySetInnerHTML={{ __html: headerHtml }} />}
             <div
               ref={exportTargetRef}

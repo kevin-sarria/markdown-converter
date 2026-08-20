@@ -161,6 +161,7 @@ export default function App() {
             markdown={activeDoc.markdown}
             settings={settings}
             onMarkdownChange={(markdown) => updateActiveDoc({ markdown })}
+            onCoverPageChange={(patch) => patchSettings({ coverPage: { ...settings.coverPage, ...patch } })}
           />
         </div>
         {settingsOpen && (

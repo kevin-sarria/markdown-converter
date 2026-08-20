@@ -38,8 +38,8 @@ function logoImgHtml(logo: LogoItem): string {
   return `<img class="md-hf-logo" src="${escapeHtml(logo.dataUrl)}" style="width: ${logo.widthMm}mm;" alt="logo" />`
 }
 
-/** Renders a left/center/right group of logos, one <span> per slot. */
-function logoGroupsHtml(logos: LogoItem[], extra?: Partial<Record<HFAlign, string>>): string {
+/** Renders a left/center/right group of logos, one <span> per slot. Exported for reuse by PreviewPane's editable cover page. */
+export function logoGroupsHtml(logos: LogoItem[], extra?: Partial<Record<HFAlign, string>>): string {
   const groups = groupLogosByAlign(logos)
   return (['left', 'center', 'right'] as const)
     .map((align) => {
