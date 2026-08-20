@@ -110,9 +110,15 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * The DOM shape of a canvas. The page itself is `contenteditable="false"` so
- * the caret can't wander into the gaps between items and start typing into the
- * page; each item is its own editable island, exactly like a columns row.
+ * The DOM shape of a canvas. The page is `contenteditable="false"` and so, by
+ * inheritance, is every item on it.
+ *
+ * That is deliberate and it is the crux of this whole mode. An editable item
+ * hands a drag to the browser's contentEditable machinery, which moves the node
+ * to wherever it judges the caret to be — unpredictable, and occasionally
+ * somewhere the content is lost. With items inert, a press-and-drag is ours to
+ * interpret: it moves the box. Double-clicking an item is what turns its text
+ * editing on, the same bargain PowerPoint makes (see useCanvasEditor.ts).
  */
 export function buildCanvasHtml(items: CanvasItemContent[]): string {
   const boxes = items.map((item) => `${itemOpenTag(item)}${item.html ?? ''}</div>`).join('')
@@ -130,15 +136,20 @@ export function itemOpenTag(raw: CanvasItem): string {
     `<div class="${ITEM_CLASS}" ${ITEM_ATTR} ` +
     `data-x="${num(item.x)}" data-y="${num(item.y)}" data-w="${num(item.w)}"` +
     (item.h === null ? '' : ` data-h="${num(item.h)}"`) +
-    ` style="left: ${num(item.x)}%; top: ${num(item.y)}%; width: ${num(item.w)}%;${height}" ` +
-    `contenteditable="true">`
+    ` style="left: ${num(item.x)}%; top: ${num(item.y)}%; width: ${num(item.w)}%;${height}">`
   )
 }
 
 /** Reads an item's box back off the DOM, where dragging keeps it up to date. */
 export function readItem(element: HTMLElement): CanvasItem {
   const read = (name: string) => {
-    const value = Number(element.getAttribute(name))
+    // `Number(null)` is 0, not NaN, so a missing attribute has to be caught
+    // before the conversion — otherwise an item with no pinned height reads as
+    // height zero, gets clamped up to the minimum, and every item in the
+    // document quietly gains a fixed height nobody asked for.
+    const raw = element.getAttribute(name)
+    if (raw === null || raw.trim() === '') return null
+    const value = Number(raw)
     return Number.isFinite(value) ? value : null
   }
   return clampItem({

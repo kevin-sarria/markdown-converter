@@ -9,14 +9,18 @@ import {
   type ClipboardEvent as ReactClipboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from 'react'
+import CanvasItemMenu from './CanvasItemMenu'
+import CanvasOverlay from './CanvasOverlay'
 import ColumnDividers from './ColumnDividers'
 import ColumnsRowMenu from './ColumnsRowMenu'
 import EditorToolbar from './EditorToolbar'
 import ImageResizeHandle from './ImageResizeHandle'
 import { renderHeaderBandHtml, renderFooterBandHtml, renderWatermarkHtml } from '../lib/headerFooterMarkup'
 import { buildRowHtml } from '../lib/columns'
+import { buildStarterCanvas, canvasOf, itemOf } from '../lib/canvasDom'
 import { dropBeside, isColumnsRow, removeImageBlock, rowOf } from '../lib/columnsDom'
 import { CONTENT_IMAGE_MAX_DIMENSION, optimizeImageFile } from '../lib/imageOptimize'
+import { useCanvasEditor } from '../hooks/useCanvasEditor'
 import { useColumnsRow } from '../hooks/useColumnsRow'
 import { useEditableMarkdown, type EditableMarkdownRegion } from '../hooks/useEditableMarkdown'
 import { useImageSelection } from '../hooks/useImageSelection'
@@ -80,6 +84,7 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
 
   const image = useImageSelection()
   const columnsRow = useColumnsRow()
+  const canvas = useCanvasEditor()
   const sideDrop = useImageSideDrop(containerRef)
 
   // Whichever editable region was last focused — defaults to the body so the
@@ -128,15 +133,37 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
     region.syncNow()
   }
 
+  const handleInsertCanvas = (region: EditableMarkdownRegion = activeRegionRef.current) => {
+    region.elRef.current?.focus()
+    document.execCommand('insertHTML', false, `${buildStarterCanvas()}<p><br></p>`)
+    region.syncNow()
+  }
+
   // Clicking an image selects it (shows the resize handle); clicking inside a
   // columns row selects the row (shows its menu and dividers); clicking
   // anywhere else clears both.
   const makeClickHandler = (region: EditableMarkdownRegion) => (e: ReactMouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement
+
+    // A click that landed on a canvas page was already handled on mousedown by
+    // the canvas editor; the flowing-content selections must not fight it.
+    if (canvasOf(target)) return
+
+    canvas.select(null)
     image.selectFrom(target, region.syncNow)
 
     const row = rowOf(target)
     columnsRow.select(isColumnsRow(row) ? { row, syncNow: region.syncNow } : null)
+  }
+
+  const makeMouseDownHandler = (region: EditableMarkdownRegion) => (e: ReactMouseEvent<HTMLDivElement>) => {
+    const item = itemOf(e.target as HTMLElement)
+    const page = item && canvasOf(item)
+    if (item && page) canvas.handleItemMouseDown(e, { item, canvas: page, syncNow: region.syncNow })
+  }
+
+  const handleDoubleClick = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if (itemOf(e.target as HTMLElement)) canvas.beginTextEditing()
   }
 
   const insertImageIntoRegion = async (region: EditableMarkdownRegion, file: File) => {
@@ -208,6 +235,8 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
     onFocus: () => focusRegion(region),
     onInput: region.handleInput,
     onBlur: region.handleBlur,
+    onMouseDown: makeMouseDownHandler(region),
+    onDoubleClick: handleDoubleClick,
     onDragStart: sideDrop.handleDragStart,
     onDragOver: (e: ReactDragEvent<HTMLDivElement>) => {
       e.preventDefault() // required for the drop to be allowed at all
@@ -225,6 +254,7 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
         editableRef={activeEditableRef}
         onEdited={handleToolbarEdited}
         onInsertColumns={handleInsertColumns}
+        onInsertCanvas={() => handleInsertCanvas()}
       />
       <div ref={containerRef} className="relative flex w-full min-w-0 flex-1 justify-center overflow-x-auto py-8 px-4">
         <div style={{ width: pageSize.width * scale || undefined, height: pageSize.height * scale || undefined }}>
@@ -252,6 +282,8 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
         <ImageResizeHandle selection={image.selection} scale={scale} containerRef={containerRef} />
         <ColumnsRowMenu controller={columnsRow} containerRef={containerRef} />
         <ColumnDividers selection={columnsRow.selection} containerRef={containerRef} />
+        <CanvasOverlay editor={canvas} containerRef={containerRef} />
+        <CanvasItemMenu editor={canvas} containerRef={containerRef} />
         {sideDrop.guide && (
           <div
             className="md-side-drop-guide"

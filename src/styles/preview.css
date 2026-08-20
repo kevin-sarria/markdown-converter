@@ -411,3 +411,91 @@
   background: var(--p-accent);
   pointer-events: none;
 }
+
+/* ─── Canvas pages (::: lienzo — see lib/canvas.ts) ───────────────────────── */
+
+/* A page whose content sits where it was put. It spans the page's content area
+   (inside the margins), so item positions in percent mean the same thing here,
+   in the HTML export and in the PDF, whatever page size is selected. */
+.md-canvas {
+  position: relative;
+  width: 100%;
+  height: var(--p-canvas-height);
+  margin: 0;
+  /* Nothing escapes the page. Positions are clamped in canvas.ts too — this is
+     the second line of defence, so a hand-edited .md can't paint outside it. */
+  overflow: hidden;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.md-canvas-item {
+  position: absolute;
+  box-sizing: border-box;
+}
+
+.md-canvas-item > *:first-child {
+  margin-top: 0;
+}
+.md-canvas-item > *:last-child {
+  margin-bottom: 0;
+}
+
+/* On a canvas the box *is* the picture frame: resizing the item resizes the
+   image. `!important` overrides the inline width that a `#w=` fragment puts on
+   the tag (see imageWidth.ts), which is the right behaviour in flowing text and
+   the wrong one here, where the item's own box already decides the size. */
+.md-canvas-item img {
+  display: block;
+  width: 100% !important;
+  height: auto !important;
+  border-radius: 0;
+}
+
+/* Editing affordances, on screen only — .pdf-export drops them below. */
+.md-canvas {
+  outline: 1px dashed var(--p-border);
+  outline-offset: 0;
+}
+
+.md-canvas-item:hover {
+  outline: 1px dashed var(--p-accent);
+  outline-offset: 2px;
+}
+
+.md-canvas-item.is-selected {
+  outline: 1.5px solid var(--p-accent);
+  outline-offset: 2px;
+  cursor: move;
+}
+
+.md-canvas-item.is-dragging {
+  opacity: 0.85;
+}
+
+.pdf-export .md-canvas,
+.pdf-export .md-canvas-item,
+.pdf-export .md-canvas-item:hover {
+  outline: none;
+}
+
+/* Corner grips of the selected item, and the alignment guides that appear while
+   dragging. Both are drawn in the preview container's own coordinate space
+   (see lib/overlayPosition.ts), never inside the page. */
+.md-canvas-grip {
+  position: absolute;
+  z-index: 22;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1.5px solid var(--p-accent);
+  background: var(--p-bg);
+}
+
+.md-canvas-guide {
+  position: absolute;
+  z-index: 21;
+  background: var(--p-accent);
+  pointer-events: none;
+  opacity: 0.9;
+}

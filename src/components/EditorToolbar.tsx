@@ -9,6 +9,8 @@ interface EditorToolbarProps {
   onEdited: () => void
   /** Inserts a row of `count` side-by-side columns at the caret. */
   onInsertColumns: (count: number) => void
+  /** Inserts a canvas page — a page you place things on by hand. */
+  onInsertCanvas: () => void
 }
 
 const PAGE_BREAK_HTML =
@@ -34,7 +36,7 @@ function ToolbarButton({ onClick, title, children }: { onClick: () => void; titl
  * it's far less code than reimplementing Selection/Range manipulation by hand.
  * If it's ever actually removed from browsers, that's the place to revisit.
  */
-export default function EditorToolbar({ editableRef, onEdited, onInsertColumns }: EditorToolbarProps) {
+export default function EditorToolbar({ editableRef, onEdited, onInsertColumns, onInsertCanvas }: EditorToolbarProps) {
   const imageInputRef = useRef<HTMLInputElement>(null)
   // Opening the native file picker always blurs the page, wiping the current
   // selection — save it on click so the image can still land at the cursor the
@@ -131,6 +133,9 @@ export default function EditorToolbar({ editableRef, onEdited, onInsertColumns }
         ⤓ Salto
       </ToolbarButton>
       <ColumnsButton onInsert={onInsertColumns} />
+      <ToolbarButton title="Insertar una página en blanco donde colocás todo a mano" onClick={onInsertCanvas}>
+        ⬚ Lienzo
+      </ToolbarButton>
 
       <input
         ref={imageInputRef}

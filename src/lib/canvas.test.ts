@@ -5,6 +5,7 @@ import {
   formatItemLine,
   isCanvasOpen,
   parseItemLine,
+  readItem,
   type CanvasItem,
 } from './canvas'
 
@@ -117,8 +118,42 @@ describe('buildCanvasHtml', () => {
     expect(html).not.toContain('height:')
   })
 
-  test('marks each item editable so text inside can be typed', () => {
+  test('leaves items uneditable, so a drag moves the box instead of the text', () => {
+    // The whole point of a canvas is dragging. An editable item hands the drag
+    // to the browser's contentEditable machinery, which moves the *node* to
+    // wherever it decides — the behaviour this mode exists to get away from.
+    // Double-clicking an item is what turns text editing on (useCanvasEditor).
     const html = buildCanvasHtml([{ x: 0, y: 0, w: 50, h: null, html: '<p>A</p>' }])
-    expect(html).toContain('contenteditable="true"')
+    expect(html).not.toContain('contenteditable="true"')
+  })
+})
+
+describe('readItem', () => {
+  const element = (attrs: Record<string, string>) => {
+    const el = document.createElement('div')
+    for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v)
+    return el
+  }
+
+  test('reads the box off the attributes', () => {
+    expect(readItem(element({ 'data-x': '14', 'data-y': '8', 'data-w': '22', 'data-h': '30' }))).toEqual({
+      x: 14,
+      y: 8,
+      w: 22,
+      h: 30,
+    })
+  })
+
+  test('an item with no pinned height still has no pinned height', () => {
+    // Number(null) is 0, not NaN — read carelessly, a missing height becomes a
+    // height of zero, gets clamped up to the minimum, and every item in the
+    // document silently acquires a fixed height it never had.
+    expect(readItem(element({ 'data-x': '10', 'data-y': '10', 'data-w': '30' })).h).toBeNull()
+  })
+
+  test('survives attributes that are not numbers', () => {
+    const item = readItem(element({ 'data-x': 'abc', 'data-y': '', 'data-w': 'x' }))
+    expect(Number.isFinite(item.x)).toBe(true)
+    expect(Number.isFinite(item.w)).toBe(true)
   })
 })

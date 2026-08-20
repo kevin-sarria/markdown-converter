@@ -39,6 +39,18 @@ export function buildPreviewVars(settings: DocSettings, options: PreviewVarsOpti
     ['--p-margin-y' as string]: options.pdfMode ? '0mm' : `${margin.mm}mm`,
     ['--p-width' as string]: `${page.widthMm}mm`,
     ['--p-height' as string]: `${page.heightMm}mm`,
+    // A canvas page (::: lienzo) is exactly one printed page of content, so it
+    // needs the real margin subtracted — not --p-margin-y, which pdfMode zeroes
+    // because html2pdf carves the vertical band itself. Deriving the canvas
+    // height from that zero would make every canvas two margins too tall and
+    // spill each one onto a second PDF page.
+    //
+    // The extra 2mm are the same shave the cover page takes (see exportPdf.ts):
+    // filling the page band *exactly* leaves the following break sitting on the
+    // page boundary, which html2pdf's pagebreak plugin reads as a break that has
+    // already happened and pads a blank page for. Coming in just under keeps a
+    // canvas to the single page it is, with no visible difference.
+    ['--p-canvas-height' as string]: `${page.heightMm - margin.mm * 2 - 2}mm`,
   }
 }
 

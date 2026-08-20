@@ -40,14 +40,14 @@ describe('rendering a canvas page', () => {
     expect(items[2].querySelector('h2')?.textContent).toBe('Entorno de producción')
   })
 
-  test('leaves the page itself uneditable and every item editable', () => {
+  test('leaves the page and its items uneditable, so a drag is ours to handle', () => {
     const host = document.createElement('div')
     host.innerHTML = renderMarkdownToHtml(COVER)
     const canvas = host.querySelector<HTMLElement>('.md-canvas')!
 
     expect(canvas.getAttribute('contenteditable')).toBe('false')
     for (const item of itemsOf(COVER)) {
-      expect(item.getAttribute('contenteditable')).toBe('true')
+      expect(item.getAttribute('contenteditable')).toBeNull()
     }
   })
 
@@ -102,8 +102,8 @@ describe('a canvas page survives the round trip', () => {
   test('keeps an item the user emptied, so its place is not lost', () => {
     const html =
       '<div class="md-canvas" data-canvas contenteditable="false">' +
-      '<div class="md-canvas-item" data-canvas-item data-x="10" data-y="10" data-w="30" contenteditable="true"></div>' +
-      '<div class="md-canvas-item" data-canvas-item data-x="50" data-y="10" data-w="30" contenteditable="true"><p>b</p></div>' +
+      '<div class="md-canvas-item" data-canvas-item data-x="10" data-y="10" data-w="30"></div>' +
+      '<div class="md-canvas-item" data-canvas-item data-x="50" data-y="10" data-w="30"><p>b</p></div>' +
       '</div>'
 
     const back = htmlToMarkdown(html)
@@ -114,7 +114,7 @@ describe('a canvas page survives the round trip', () => {
   test('keeps content the browser stranded between items', () => {
     const html =
       '<div class="md-canvas" data-canvas contenteditable="false">' +
-      '<div class="md-canvas-item" data-canvas-item data-x="0" data-y="0" data-w="30" contenteditable="true"><p>a</p></div>' +
+      '<div class="md-canvas-item" data-canvas-item data-x="0" data-y="0" data-w="30"><p>a</p></div>' +
       'perdido</div>'
 
     expect(htmlToMarkdown(html)).toContain('perdido')
