@@ -66,6 +66,32 @@ Una página en lienzo ocupa exactamente una página impresa. En PDF y HTML sale 
 cual. En Word cada elemento llega anclado a su posición con un marco, así que el
 texto sigue siendo editable ahí (no es una imagen aplanada).
 
+## Plantillas de portada
+
+Una portada que costó montar no tiene por qué montarse dos veces. En la pestaña
+**Encabezado / Marca de agua**, la sección **Plantilla de portada**:
+
+- **Guardar esta portada como plantilla…** — le ponés nombre y queda en la
+  biblioteca de este navegador.
+- **Aplicar a…** — se la ponés a un archivo, a los que elijas, o a todos de una.
+- **Exportar** / **Importar** — la bajás como archivo `.plantilla.json` y la
+  volvés a cargar cuando la necesites, en este equipo o en otro.
+
+Una plantilla guarda **la portada y el estilo** (paleta, tipografía, tamaño de
+página, márgenes, encabezado/pie, marca de agua), con **los logos dentro**: se
+abre en otro equipo y sigue completa, sin rutas rotas.
+
+Aplicarla reemplaza la portada y el estilo del archivo destino y **no toca su
+contenido ni su nombre**. Si el archivo ya tenía una portada, avisa antes —
+diciendo cuántos archivos y cuáles, no un "¿estás seguro?" a secas.
+
+Hay dos formas de guardarla porque fallan distinto: la biblioteca del navegador
+es lo cómodo del día a día pero desaparece si limpiás los datos del navegador o
+cambiás de equipo; el archivo exportado sobrevive a cualquier cosa pero hay que
+volver a encontrarlo. Como los logos viajan dentro, una plantilla pesa cientos de
+KB, así que la biblioteca aguanta del orden de diez o quince — cuando se llene te
+lo dice y podés exportar las que no uses.
+
 ## Contenido en columnas
 
 Para poner dos imágenes (o cualquier contenido) una al lado de la otra, hay tres
@@ -121,6 +147,11 @@ En PDF y HTML sale tal cual se ve. En Word llega como una tabla real sin bordes
   conservan los colores del tema tal cual).
 - **Exportar a HTML**: genera un archivo autocontenido (CSS embebido, fuentes de
   Google Fonts enlazadas) que se puede abrir u hospedar donde sea.
+- **Plantillas**: `src/lib/docTemplate.ts` define el formato y las dos
+  operaciones (construir desde un documento, aplicar a otro); `templateStore.ts`
+  es la biblioteca sobre `localStorage` — lo único que esta app persiste, y por
+  eso el módulo asume que el almacenamiento puede estar lleno, apagado o con
+  basura de otra versión, y nunca lanza.
 - **Lienzo**: `src/lib/canvas.ts` define el formato (posiciones en porcentaje),
   `canvasPlugin.ts` lo parsea, `canvasSnap.ts` calcula el imantado y las guías, y
   `useCanvasEditor.ts` maneja arrastrar, redimensionar y editar. Los elementos se
