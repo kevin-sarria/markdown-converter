@@ -23,6 +23,7 @@ import { saveAs } from 'file-saver'
 import type { Token } from 'markdown-it'
 import { hasCoverContent } from './coverPage'
 import { buildFooter, buildHeader } from './docxHeaderFooter'
+import { parseImageWidthFragment } from './imageWidth'
 import { md } from './markdown'
 import { getFontPairing, getTheme, type DocSettings } from './settings'
 import { MARGINS, PAGE_SIZES } from './themes'
@@ -587,7 +588,11 @@ function collectImageSrcs(tokens: Token[], out: Set<string>) {
   }
 }
 
-async function loadImageAsset(src: string): Promise<ImageAsset | null> {
+async function loadImageAsset(rawSrc: string): Promise<ImageAsset | null> {
+  // Resized images carry their chosen width as a #w=NNN fragment (see
+  // imageWidth.ts) — honor it here instead of the default cap so DOCX matches
+  // what the user set in the editable preview.
+  const { cleanSrc: src, widthPx } = parseImageWidthFragment(rawSrc)
   if (!/^(https?:|data:)/i.test(src)) return null
   const res = await fetch(src)
   if (!res.ok) return null
@@ -596,8 +601,7 @@ async function loadImageAsset(src: string): Promise<ImageAsset | null> {
   const type = sniffImageType(bytes)
   if (!type) return null
   const { width, height } = await readImageDimensions(buf, res.headers.get('content-type') ?? undefined)
-  const maxW = 500
-  const scale = width > maxW ? maxW / width : 1
+  const scale = widthPx ? widthPx / width : width > 500 ? 500 / width : 1
   return { data: bytes, type, width: Math.round(width * scale), height: Math.round(height * scale) }
 }
 

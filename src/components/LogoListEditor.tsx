@@ -1,5 +1,5 @@
 import { useRef } from 'react'
-import { fileToDataUrl } from '../lib/headerFooter'
+import { optimizeImageFile } from '../lib/imageOptimize'
 import { makeLogoId, type LogoItem } from '../lib/logos'
 import AlignPicker from './AlignPicker'
 
@@ -10,12 +10,16 @@ interface LogoListEditorProps {
   maxWidthMm?: number
 }
 
+// Logos render small (a few cm wide at most) — no need to keep a multi-
+// megapixel original around.
+const LOGO_MAX_DIMENSION = 800
+
 export default function LogoListEditor({ logos, onChange, maxWidthMm = 40 }: LogoListEditorProps) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleUpload = async (file: File | undefined) => {
     if (!file) return
-    const dataUrl = await fileToDataUrl(file)
+    const dataUrl = await optimizeImageFile(file, { maxDimension: LOGO_MAX_DIMENSION })
     onChange([...logos, { id: makeLogoId(), dataUrl, widthMm: Math.min(18, maxWidthMm), align: 'left' }])
   }
 

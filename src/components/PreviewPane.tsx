@@ -7,10 +7,12 @@ import {
   useState,
   type DragEvent as ReactDragEvent,
   type ClipboardEvent as ReactClipboardEvent,
+  type MouseEvent as ReactMouseEvent,
 } from 'react'
 import EditorToolbar from './EditorToolbar'
+import ImageResizeHandle, { type ImageSelection } from './ImageResizeHandle'
 import { renderHeaderBandHtml, renderFooterBandHtml, renderWatermarkHtml } from '../lib/headerFooterMarkup'
-import { fileToDataUrl } from '../lib/headerFooter'
+import { CONTENT_IMAGE_MAX_DIMENSION, optimizeImageFile } from '../lib/imageOptimize'
 import { useEditableMarkdown, type EditableMarkdownRegion } from '../hooks/useEditableMarkdown'
 import { buildPreviewVars } from '../lib/previewStyle'
 import type { DocSettings } from '../lib/settings'
@@ -94,9 +96,29 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
     else body.handleInput()
   }
 
+  // Clicking an image selects it (shows the resize handle, see
+  // ImageResizeHandle.tsx); clicking anything else deselects.
+  const [selectedImage, setSelectedImage] = useState<ImageSelection | null>(null)
+  useEffect(() => {
+    return () => selectedImage?.img.classList.remove('md-image-selected')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedImage])
+
+  const makeClickHandler = (region: EditableMarkdownRegion) => (e: ReactMouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement
+    selectedImage?.img.classList.remove('md-image-selected')
+    if (target.tagName === 'IMG') {
+      const img = target as HTMLImageElement
+      img.classList.add('md-image-selected')
+      setSelectedImage({ img, syncNow: region.syncNow })
+    } else {
+      setSelectedImage(null)
+    }
+  }
+
   const insertImageIntoRegion = async (region: EditableMarkdownRegion, file: File) => {
     if (!file.type.startsWith('image/')) return
-    const dataUrl = await fileToDataUrl(file)
+    const dataUrl = await optimizeImageFile(file, { maxDimension: CONTENT_IMAGE_MAX_DIMENSION })
     region.elRef.current?.focus()
     document.execCommand('insertImage', false, dataUrl)
     region.syncNow()
@@ -120,7 +142,7 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-col">
       <EditorToolbar editableRef={activeEditableRef} onEdited={handleToolbarEdited} />
-      <div ref={containerRef} className="flex w-full min-w-0 flex-1 justify-center overflow-x-auto py-8 px-4">
+      <div ref={containerRef} className="relative flex w-full min-w-0 flex-1 justify-center overflow-x-auto py-8 px-4">
         <div style={{ width: pageSize.width * scale || undefined, height: pageSize.height * scale || undefined }}>
           <div ref={pageRef} className="md-page-wrap page-shell" style={{ ...vars, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
             {cover.enabled && (
@@ -138,6 +160,7 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
                   onDrop={makeDropHandler(coverRegion)}
                   onDragOver={(e) => e.preventDefault()}
                   onPaste={makePasteHandler(coverRegion)}
+                  onClick={makeClickHandler(coverRegion)}
                 />
                 <div className="page-break" data-page-break />
               </>
@@ -156,11 +179,13 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
               onDrop={makeDropHandler(body)}
               onDragOver={(e) => e.preventDefault()}
               onPaste={makePasteHandler(body)}
+              onClick={makeClickHandler(body)}
             />
             {footerHtml && <div dangerouslySetInnerHTML={{ __html: footerHtml }} />}
             {watermarkHtml && <div dangerouslySetInnerHTML={{ __html: watermarkHtml }} />}
           </div>
         </div>
+        <ImageResizeHandle selection={selectedImage} scale={scale} containerRef={containerRef} />
       </div>
     </div>
   )

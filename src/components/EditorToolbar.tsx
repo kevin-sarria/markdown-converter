@@ -1,5 +1,5 @@
 import { useRef, type ReactNode, type RefObject } from 'react'
-import { fileToDataUrl } from '../lib/headerFooter'
+import { CONTENT_IMAGE_MAX_DIMENSION, optimizeImageFile } from '../lib/imageOptimize'
 
 interface EditorToolbarProps {
   /** The contentEditable node the toolbar acts on (see PreviewPane.tsx). */
@@ -54,7 +54,7 @@ export default function EditorToolbar({ editableRef, onEdited }: EditorToolbarPr
 
   const handleInsertImage = async (file: File | undefined) => {
     if (!file) return
-    const dataUrl = await fileToDataUrl(file)
+    const dataUrl = await optimizeImageFile(file, { maxDimension: CONTENT_IMAGE_MAX_DIMENSION })
     focusEditable()
     const selection = window.getSelection()
     if (selection && savedRangeRef.current) {

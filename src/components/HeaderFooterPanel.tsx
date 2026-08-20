@@ -1,6 +1,7 @@
 import { useRef } from 'react'
 import type { CoverPageSettings } from '../lib/coverPage'
-import { fileToDataUrl, type HeaderFooterSettings, type WatermarkSettings } from '../lib/headerFooter'
+import type { HeaderFooterSettings, WatermarkSettings } from '../lib/headerFooter'
+import { optimizeImageFile } from '../lib/imageOptimize'
 import type { DocSettings } from '../lib/settings'
 import AlignPicker from './AlignPicker'
 import LogoListEditor from './LogoListEditor'
@@ -10,6 +11,10 @@ interface HeaderFooterPanelProps {
   settings: DocSettings
   onChange: (patch: Partial<DocSettings>) => void
 }
+
+// The watermark sits behind full-page content but is meant to stay subtle —
+// no need for a huge original either.
+const WATERMARK_MAX_DIMENSION = 1200
 
 export default function HeaderFooterPanel({ settings, onChange }: HeaderFooterPanelProps) {
   const hf = settings.headerFooter
@@ -23,7 +28,7 @@ export default function HeaderFooterPanel({ settings, onChange }: HeaderFooterPa
 
   const handleWatermarkImageUpload = async (file: File | undefined) => {
     if (!file) return
-    const dataUrl = await fileToDataUrl(file)
+    const dataUrl = await optimizeImageFile(file, { maxDimension: WATERMARK_MAX_DIMENSION })
     patchWm({ imageDataUrl: dataUrl })
   }
 

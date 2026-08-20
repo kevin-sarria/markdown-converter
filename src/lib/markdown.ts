@@ -1,5 +1,6 @@
 import MarkdownIt from 'markdown-it'
 import type { MarkdownIt as MarkdownItInstance, StateBlock } from 'markdown-it'
+import { parseImageWidthFragment } from './imageWidth'
 
 export const PAGE_BREAK_MARKER = '<!-- pagebreak -->'
 
@@ -56,6 +57,22 @@ md.block.ruler.before(
 // identically whether it was typed as Markdown or inserted visually.
 md.renderer.rules.page_break = () =>
   `<div class="page-break" data-page-break contenteditable="false"><span class="page-break-label">Salto de página</span></div>\n`
+
+// Images resized with ImageResizeHandle.tsx carry their chosen width as a
+// `#w=NNN` fragment on `src` (see imageWidth.ts) — applied here as an inline
+// style so it actually renders at that size, in the preview, the HTML export,
+// and the PDF (which rasterizes this same rendered HTML).
+const defaultImageRule =
+  md.renderer.rules.image ||
+  function (tokens, idx, options, _env, self) {
+    return self.renderToken(tokens, idx, options)
+  }
+md.renderer.rules.image = (tokens, idx, options, env, self) => {
+  const token = tokens[idx]
+  const { widthPx } = parseImageWidthFragment(String(token.attrGet('src') ?? ''))
+  if (widthPx) token.attrSet('style', `width: ${widthPx}px; height: auto;`)
+  return defaultImageRule(tokens, idx, options, env, self)
+}
 
 export function renderMarkdownToHtml(source: string): string {
   return md.render(source || '')
