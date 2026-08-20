@@ -1,0 +1,155 @@
+- generic [ref=f20e3]:
+  - banner [ref=f20e4]:
+    - generic [ref=f20e5]:
+      - generic [ref=f20e6]: M
+      - generic [ref=f20e7]: MD Studio
+    - textbox "nombre-del-documento" [ref=f20e8]: mi-documento
+    - generic [ref=f20e9]:
+      - button "Subir .md" [ref=f20e10]
+      - button "Limpiar" [ref=f20e11]
+      - button "HTML" [ref=f20e13]
+      - button "Word (.docx)" [ref=f20e14]
+      - button "Exportar PDF" [ref=f20e15]
+      - button "Estilo" [pressed] [ref=f20e17]
+  - generic [ref=f20e18]:
+    - generic [ref=f20e20]:
+      - generic [ref=f20e21]:
+        - generic [ref=f20e22]: Archivos
+        - generic [ref=f20e23]: "1"
+      - button "mi-documento" [ref=f20e26]
+    - generic [ref=f20e28]:
+      - generic [ref=f20e29]:
+        - generic [ref=f20e30]: Markdown
+        - generic [ref=f20e31]: 1094 caracteres
+      - textbox "# Escribe tu Markdown aquí..." [ref=f20e32]: "# Bienvenido a MD Studio Escribe o pega tu **Markdown** a la izquierda y mira la vista previa a la derecha, lista para exportar a *PDF*, *Word* o *HTML*. ## Características - Cambia la **paleta de colores** y la **tipografía** en cualquier momento - Exporta a `PDF`, `DOCX` y `HTML` totalmente en el navegador - Nada se sube a ningún servidor — todo ocurre en tu equipo ## Contenido en columnas Con el botón **Columnas** de la barra podés poner dos o más bloques uno al lado del otro, y repartir el ancho arrastrando el separador: ::: columnas centro :: col 55 ### A la izquierda Cualquier bloque entra acá: texto, listas, citas, imágenes. :: col 45 ### A la derecha También podés arrastrar una imagen al borde de otra para emparejarlas. ::: ### Ejemplo de código ```js function saludar(nombre) { return `Hola, ${nombre}!` } ``` > Este es un bloque de cita. Útil para resaltar ideas importantes. | Formato | Soportado | | --- | --- | | PDF | ✅ | | Word (.docx) | ✅ | | HTML | ✅ | 1. Sube tu archivo `.md` 2. Ajusta el estilo 3. Exporta [Más información](https://www.markdown.es/)"
+    - generic [ref=f20e34]:
+      - generic [ref=f20e35]:
+        - button "N" [ref=f20e36]
+        - button "K" [ref=f20e38]
+        - button "S" [ref=f20e40]
+        - button "H1" [ref=f20e43]
+        - button "H2" [ref=f20e44]
+        - button "H3" [ref=f20e45]
+        - button "P" [ref=f20e46]
+        - button "•—" [ref=f20e48]
+        - button "1.—" [ref=f20e49]
+        - button "“ ”" [ref=f20e50]
+        - button "🔗" [ref=f20e52]
+        - button "🖼" [ref=f20e53]
+        - button "⤓ Salto" [ref=f20e54]
+        - button "▤ Columnas" [ref=f20e56]
+        - button "⬚ Lienzo" [ref=f20e57]
+      - generic [ref=f20e61]:
+        - heading "Bienvenido a MD Studio" [level=1] [ref=f20e62]
+        - paragraph [ref=f20e63]:
+          - text: Escribe o pega tu
+          - strong [ref=f20e64]: Markdown
+          - text: a la izquierda y mira la vista previa a la derecha, lista para exportar a
+          - emphasis [ref=f20e65]: PDF
+          - text: ","
+          - emphasis [ref=f20e66]: Word
+          - text: o
+          - emphasis [ref=f20e67]: HTML
+          - text: .
+        - heading "Características" [level=2] [ref=f20e68]
+        - list [ref=f20e69]:
+          - listitem [ref=f20e70]:
+            - text: Cambia la
+            - strong [ref=f20e71]: paleta de colores
+            - text: y la
+            - strong [ref=f20e72]: tipografía
+            - text: en cualquier momento
+          - listitem [ref=f20e73]:
+            - text: Exporta a
+            - code [ref=f20e74]: PDF
+            - text: ","
+            - code [ref=f20e75]: DOCX
+            - text: "y"
+            - code [ref=f20e76]: HTML
+            - text: totalmente en el navegador
+          - listitem [ref=f20e77]: Nada se sube a ningún servidor — todo ocurre en tu equipo
+        - heading "Contenido en columnas" [level=2] [ref=f20e78]
+        - paragraph [ref=f20e79]:
+          - text: Con el botón
+          - strong [ref=f20e80]: Columnas
+          - text: "de la barra podés poner dos o más bloques uno al lado del otro, y repartir el ancho arrastrando el separador:"
+        - generic [ref=f20e81]:
+          - generic [ref=f20e82]:
+            - heading "A la izquierda" [level=3] [ref=f20e83]
+            - paragraph [ref=f20e84]: "Cualquier bloque entra acá: texto, listas, citas, imágenes."
+          - generic [ref=f20e85]:
+            - heading "A la derecha" [level=3] [ref=f20e86]
+            - paragraph [ref=f20e87]: También podés arrastrar una imagen al borde de otra para emparejarlas.
+        - heading "Ejemplo de código" [level=3] [ref=f20e88]
+        - code [ref=f20e90]: "function saludar(nombre) { return `Hola, ${nombre}!` }"
+        - blockquote [ref=f20e91]:
+          - paragraph [ref=f20e92]: Este es un bloque de cita. Útil para resaltar ideas importantes.
+        - table [ref=f20e93]:
+          - rowgroup [ref=f20e94]:
+            - row [ref=f20e95]:
+              - columnheader "Formato" [ref=f20e96]
+              - columnheader "Soportado" [ref=f20e97]
+          - rowgroup [ref=f20e98]:
+            - row [ref=f20e99]:
+              - cell "PDF" [ref=f20e100]
+              - cell "✅" [ref=f20e101]
+            - row [ref=f20e102]:
+              - cell "Word (.docx)" [ref=f20e103]
+              - cell "✅" [ref=f20e104]
+            - row [ref=f20e105]:
+              - cell "HTML" [ref=f20e106]
+              - cell "✅" [ref=f20e107]
+        - list [ref=f20e108]:
+          - listitem [ref=f20e109]:
+            - text: Sube tu archivo
+            - code [ref=f20e110]: .md
+          - listitem [ref=f20e111]: Ajusta el estilo
+          - listitem [ref=f20e112]: Exporta
+        - paragraph [ref=f20e113]:
+          - link "Más información" [ref=f20e114]:
+            - /url: https://www.markdown.es/
+    - generic [ref=f20e116]:
+      - generic [ref=f20e117]:
+        - button "Estilo" [ref=f20e118]
+        - button "Encabezado / Marca de agua" [ref=f20e119]
+      - generic [ref=f20e120]:
+        - heading "Paleta de colores" [level=3] [ref=f20e121]
+        - generic [ref=f20e122]:
+          - button "Clean Light" [ref=f20e123]
+          - button "Midnight Dark" [ref=f20e129]
+          - button "Sepia Paper" [ref=f20e135]
+          - button "Ocean" [ref=f20e141]
+          - button "Forest" [ref=f20e147]
+          - button "Slate Professional" [ref=f20e153]
+          - button "Rose" [ref=f20e159]
+          - button "Minimal Mono" [ref=f20e165]
+      - generic [ref=f20e171]:
+        - heading "Tipografía" [level=3] [ref=f20e172]
+        - generic [ref=f20e173]:
+          - button "Inter — Moderno" [ref=f20e174]
+          - button "Georgia — Clásico" [ref=f20e176]
+          - button "Merriweather — Editorial" [ref=f20e178]
+          - button "Playfair — Elegante" [ref=f20e180]
+          - button "Roboto Slab — Firme" [ref=f20e182]
+          - button "Sistema — Simple" [ref=f20e184]
+      - generic [ref=f20e186]:
+        - heading "Tamaño de texto" [level=3] [ref=f20e187]
+        - generic [ref=f20e188]:
+          - slider [ref=f20e189]: "12"
+          - generic [ref=f20e190]: 12pt
+      - generic [ref=f20e191]:
+        - heading "Interlineado" [level=3] [ref=f20e192]
+        - generic [ref=f20e193]:
+          - slider [ref=f20e194]: "1.6"
+          - generic [ref=f20e195]: "1.6"
+      - generic [ref=f20e196]:
+        - heading "Tamaño de página" [level=3] [ref=f20e197]
+        - generic [ref=f20e198]:
+          - button "A4" [ref=f20e199]
+          - button "Carta (Letter)" [ref=f20e200]
+      - generic [ref=f20e201]:
+        - heading "Márgenes" [level=3] [ref=f20e202]
+        - generic [ref=f20e203]:
+          - button "Angosto" [ref=f20e204]
+          - button "Normal" [ref=f20e205]
+          - button "Amplio" [ref=f20e206]

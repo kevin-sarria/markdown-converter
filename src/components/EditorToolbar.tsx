@@ -43,7 +43,22 @@ export default function EditorToolbar({ editableRef, onEdited, onInsertColumns, 
   // user actually had, instead of wherever focus happens to end up afterwards.
   const savedRangeRef = useRef<Range | null>(null)
 
-  const focusEditable = () => editableRef.current?.focus()
+  /**
+   * Puts the caret somewhere the command can act on — but only if it isn't
+   * already somewhere better.
+   *
+   * The editable preview has editable islands inside it: a column, a canvas text
+   * box. When the caret is in one of those, focusing the outer region drags it
+   * out and collapses the selection, and the command that follows finds nothing
+   * to work on. That is what made Bold and Italic do nothing at all inside a
+   * canvas text box.
+   */
+  const focusEditable = () => {
+    const anchor = window.getSelection()?.anchorNode
+    const host = anchor?.nodeType === 1 ? (anchor as Element) : anchor?.parentElement
+    if (host?.closest('[contenteditable="true"]')) return
+    editableRef.current?.focus()
+  }
 
   const exec = (command: string, value?: string) => {
     focusEditable()
