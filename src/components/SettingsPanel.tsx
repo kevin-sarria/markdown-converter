@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { COLOR_THEMES, FONT_PAIRINGS, MARGINS, PAGE_SIZES, type Margin, type PageSize } from '../lib/themes'
 import type { DocFile } from '../lib/docFile'
+import type { DocTemplate } from '../lib/docTemplate'
 import type { DocSettings } from '../lib/settings'
 import ApplySettingsMenu from './ApplySettingsMenu'
 import HeaderFooterPanel from './HeaderFooterPanel'
+import TemplatePanel from './TemplatePanel'
 
 interface SettingsPanelProps {
   settings: DocSettings
@@ -11,11 +13,21 @@ interface SettingsPanelProps {
   docs: DocFile[]
   activeDocId: string
   onApplySettings: (targetIds: string[]) => void
+  activeDoc: DocFile
+  onApplyTemplate: (template: DocTemplate, targetIds: string[]) => void
 }
 
 type Tab = 'style' | 'headerFooter'
 
-export default function SettingsPanel({ settings, onChange, docs, activeDocId, onApplySettings }: SettingsPanelProps) {
+export default function SettingsPanel({
+  settings,
+  onChange,
+  docs,
+  activeDocId,
+  onApplySettings,
+  activeDoc,
+  onApplyTemplate,
+}: SettingsPanelProps) {
   const [tab, setTab] = useState<Tab>('style')
 
   return (
@@ -43,7 +55,12 @@ export default function SettingsPanel({ settings, onChange, docs, activeDocId, o
         </button>
       </div>
 
-      {tab === 'headerFooter' && <HeaderFooterPanel settings={settings} onChange={onChange} />}
+      {tab === 'headerFooter' && (
+        <>
+          <HeaderFooterPanel settings={settings} onChange={onChange} />
+          <TemplatePanel docs={docs} activeDoc={activeDoc} onApply={onApplyTemplate} />
+        </>
+      )}
 
       {tab === 'style' && (
         <>

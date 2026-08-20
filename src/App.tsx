@@ -5,6 +5,8 @@ import PreviewPane from './components/PreviewPane'
 import SettingsPanel from './components/SettingsPanel'
 import Toolbar from './components/Toolbar'
 import { makeDocId, slugify, type DocFile } from './lib/docFile'
+import { applyTemplate, type DocTemplate } from './lib/docTemplate'
+import { hasCoverContent } from './lib/coverPage'
 import { downloadAllAsZip, type BatchFormat } from './lib/exportBatch'
 import { exportToHtml } from './lib/exportHtml'
 import { SAMPLE_MARKDOWN } from './lib/markdown'
@@ -35,6 +37,31 @@ export default function App() {
   // active document's settings onto other loaded files on purpose.
   const patchSettings = (patch: Partial<DocSettings>) =>
     updateActiveDoc({ settings: { ...activeDoc.settings, ...patch } })
+
+  /**
+   * Puts a saved cover template on the chosen files. It replaces their cover and
+   * their style and leaves their writing alone (see applyTemplate).
+   *
+   * The confirmation names how many covers are about to be replaced rather than
+   * asking a vague "are you sure?": applying to every file at once can throw
+   * away covers somebody built by hand, and nothing here can undo that. When no
+   * target has a cover, there is nothing to lose and nothing to ask.
+   */
+  const handleApplyTemplate = (template: DocTemplate, targetIds: string[]) => {
+    const targets = new Set(targetIds)
+    const replacing = docs.filter((d) => targets.has(d.id) && hasCoverContent(d.settings.coverPage))
+
+    if (replacing.length > 0) {
+      const names = replacing.map((d) => d.name || 'documento').join(', ')
+      const question =
+        replacing.length === 1
+          ? `«${names}» ya tiene una portada. ¿La reemplazo?`
+          : `${replacing.length} archivos ya tienen portada (${names}). ¿Las reemplazo?`
+      if (!window.confirm(question)) return
+    }
+
+    setDocs((prev) => prev.map((d) => (targets.has(d.id) ? applyTemplate(d, template) : d)))
+  }
 
   const handleApplySettings = (targetIds: string[]) => {
     const targetSet = new Set(targetIds)
@@ -179,6 +206,8 @@ export default function App() {
               docs={docs}
               activeDocId={activeDoc.id}
               onApplySettings={handleApplySettings}
+              activeDoc={activeDoc}
+              onApplyTemplate={handleApplyTemplate}
             />
           </div>
         )}
