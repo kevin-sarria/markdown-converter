@@ -1,7 +1,11 @@
+import type { DocSettings } from './settings'
+
 export interface DocFile {
   id: string
   name: string
   markdown: string
+  /** Style/header/footer/watermark/cover — independent per file, see ApplySettingsMenu.tsx to copy across files. */
+  settings: DocSettings
 }
 
 export function slugify(name: string): string {

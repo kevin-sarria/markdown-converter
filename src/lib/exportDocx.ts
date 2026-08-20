@@ -22,7 +22,7 @@ import {
 import { saveAs } from 'file-saver'
 import type { Token } from 'markdown-it'
 import { hasCoverContent } from './coverPage'
-import { buildCoverPageBlocks, buildFooter, buildHeader } from './docxHeaderFooter'
+import { buildFooter, buildHeader } from './docxHeaderFooter'
 import { md } from './markdown'
 import { getFontPairing, getTheme, type DocSettings } from './settings'
 import { MARGINS, PAGE_SIZES } from './themes'
@@ -85,7 +85,7 @@ export async function buildDocxBlob(markdownText: string, settings: DocSettings)
   const safeHeading = isDarkTheme ? '1A1A1E' : HEX(theme.heading)
   const safeText = isDarkTheme ? '2A2A30' : HEX(theme.text)
 
-  const body = convertBlocks(tokens, cursor, null, ctx, {
+  const buildCtx: BuildCtx = {
     theme,
     font,
     baseSize: settings.fontSizePt,
@@ -94,18 +94,29 @@ export async function buildDocxBlob(markdownText: string, settings: DocSettings)
     images,
     safeHeading,
     safeText,
-  })
+  }
+
+  const body = convertBlocks(tokens, cursor, null, ctx, buildCtx)
 
   const hf = settings.headerFooter
   const header = await buildHeader(hf, settings.watermark, font)
   const footer = buildFooter(hf, font)
 
-  // A cover page is always page 1 with a blank header/footer of its own — the
-  // "show on first page" toggle then refers to the first page of the body,
-  // which docx.js can't distinguish separately from page 1 when there's no
-  // cover, so it stops applying once a cover exists (see coverPage.ts plan).
+  // The cover is free-form Markdown too (see coverPage.ts) — converted with the
+  // exact same convertBlocks/preloadImages the body uses, just against its own
+  // text, followed by a hard page break. A cover page is always page 1 with a
+  // blank header/footer of its own — the "show on first page" toggle then
+  // refers to the first page of the body, which docx.js can't distinguish
+  // separately from page 1 when there's no cover, so it stops applying once a
+  // cover exists.
   const cover = settings.coverPage
-  const coverBlocks = hasCoverContent(cover) ? await buildCoverPageBlocks(cover, font) : []
+  let coverBlocks: (Paragraph | Table)[] = []
+  if (hasCoverContent(cover)) {
+    const coverTokens = md.parse(cover.content, {})
+    const coverImages = await preloadImages(coverTokens)
+    coverBlocks = convertBlocks(coverTokens, { i: 0 }, null, { listStack: [], blockquote: false, bulletPending: null }, { ...buildCtx, images: coverImages })
+    coverBlocks.push(new Paragraph({ children: [new PageBreak()] }))
+  }
   const showFirstPageBand = coverBlocks.length > 0 || (hf.enabled && !hf.showOnFirstPage)
 
   const doc = new Document({

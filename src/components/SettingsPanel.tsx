@@ -1,20 +1,27 @@
 import { useState } from 'react'
 import { COLOR_THEMES, FONT_PAIRINGS, MARGINS, PAGE_SIZES, type Margin, type PageSize } from '../lib/themes'
+import type { DocFile } from '../lib/docFile'
 import type { DocSettings } from '../lib/settings'
+import ApplySettingsMenu from './ApplySettingsMenu'
 import HeaderFooterPanel from './HeaderFooterPanel'
 
 interface SettingsPanelProps {
   settings: DocSettings
   onChange: (patch: Partial<DocSettings>) => void
+  docs: DocFile[]
+  activeDocId: string
+  onApplySettings: (targetIds: string[]) => void
 }
 
 type Tab = 'style' | 'headerFooter'
 
-export default function SettingsPanel({ settings, onChange }: SettingsPanelProps) {
+export default function SettingsPanel({ settings, onChange, docs, activeDocId, onApplySettings }: SettingsPanelProps) {
   const [tab, setTab] = useState<Tab>('style')
 
   return (
     <div className="flex h-full w-full shrink-0 flex-col gap-6 overflow-y-auto border-l border-white/5 bg-[#0f1015] p-4 lg:w-72">
+      <ApplySettingsMenu docs={docs} activeDocId={activeDocId} onApply={onApplySettings} />
+
       <div className="flex gap-1 rounded-lg border border-white/10 bg-white/5 p-1">
         <button
           type="button"

@@ -1,6 +1,7 @@
 import { saveAs } from 'file-saver'
 import previewCss from '../styles/preview.css?raw'
-import { renderCoverPageHtml, renderFooterBandHtml, renderHeaderBandHtml, renderWatermarkHtml } from './headerFooterMarkup'
+import { hasCoverContent } from './coverPage'
+import { renderFooterBandHtml, renderHeaderBandHtml, renderWatermarkHtml } from './headerFooterMarkup'
 import { renderMarkdownToHtml } from './markdown'
 import { buildPreviewVarsCss } from './previewStyle'
 import type { DocSettings } from './settings'
@@ -11,7 +12,11 @@ const GOOGLE_FONTS_HREF =
 export function buildStandaloneHtml(markdown: string, settings: DocSettings, title: string): string {
   const body = renderMarkdownToHtml(markdown)
   const vars = buildPreviewVarsCss(settings)
-  const coverHtml = renderCoverPageHtml(settings.coverPage)
+  // The cover is just Markdown content (see coverPage.ts) rendered the same
+  // way as the body, wrapped as its own page-sized block + a forced break.
+  const coverHtml = hasCoverContent(settings.coverPage)
+    ? `<div class="md-preview md-cover-page" style="${vars}">${renderMarkdownToHtml(settings.coverPage.content)}</div><div class="page-break" data-page-break></div>`
+    : ''
   const headerHtml = renderHeaderBandHtml(settings.headerFooter)
   const footerHtml = renderFooterBandHtml(settings.headerFooter)
   const watermarkHtml = renderWatermarkHtml(settings.watermark)

@@ -1,6 +1,5 @@
 import {
   forwardRef,
-  useCallback,
   useEffect,
   useImperativeHandle,
   useMemo,
@@ -9,32 +8,28 @@ import {
   type DragEvent as ReactDragEvent,
   type ClipboardEvent as ReactClipboardEvent,
 } from 'react'
-import EditableText from './EditableText'
 import EditorToolbar from './EditorToolbar'
-import { logoGroupsHtml, renderHeaderBandHtml, renderFooterBandHtml, renderWatermarkHtml } from '../lib/headerFooterMarkup'
+import { renderHeaderBandHtml, renderFooterBandHtml, renderWatermarkHtml } from '../lib/headerFooterMarkup'
 import { fileToDataUrl } from '../lib/headerFooter'
-import { htmlToMarkdown } from '../lib/htmlToMarkdown'
-import { renderMarkdownToHtml } from '../lib/markdown'
+import { useEditableMarkdown, type EditableMarkdownRegion } from '../hooks/useEditableMarkdown'
 import { buildPreviewVars } from '../lib/previewStyle'
-import type { CoverPageSettings } from '../lib/coverPage'
 import type { DocSettings } from '../lib/settings'
 
 interface PreviewPaneProps {
   markdown: string
   settings: DocSettings
   onMarkdownChange: (markdown: string) => void
-  onCoverPageChange: (patch: Partial<CoverPageSettings>) => void
+  onCoverContentChange: (content: string) => void
 }
-
-const SYNC_DEBOUNCE_MS = 400
 
 /**
  * The forwarded ref points at the exact DOM node used for PDF export (the
- * content-only .md-preview node) — header/footer bands, the cover page, and the
- * watermark are rendered as siblings around it, purely for on-screen WYSIWYG
- * feedback. The real per-page PDF header/footer/watermark/cover is drawn
- * separately by jsPDF at export time (see exportPdf.ts), since this preview
- * isn't paginated.
+ * content-only .md-preview node) — header/footer bands and the watermark are
+ * rendered as siblings around it, purely for on-screen WYSIWYG feedback. The
+ * real per-page PDF header/footer/watermark is drawn separately by jsPDF at
+ * export time (see exportPdf.ts), since this preview isn't paginated. The
+ * cover page (when enabled) IS captured together with the body for PDF —
+ * see the comment in exportPdf.ts for why.
  *
  * On narrow screens the page (a real mm-sized document) is wider than the
  * viewport, so it's visually scaled down to fit with a CSS transform on the
@@ -42,40 +37,39 @@ const SYNC_DEBOUNCE_MS = 400
  * ref'd #export-target node into a fresh, untransformed off-screen container
  * before rasterizing it, so the on-screen zoom never touches the export.
  *
- * #export-target is directly editable (Word-style, via EditorToolbar) — typing,
- * formatting, dropping/pasting images, and inserting page breaks all happen
- * right here. Markdown stays the single source of truth: edits get converted
- * back with htmlToMarkdown() and pushed up through onMarkdownChange, the exact
- * same prop the plain-text Markdown editor uses, so both panels drive the same
- * state and every exporter keeps reading plain Markdown as before.
- *
- * The tricky part is not fighting the cursor: this node's contents are written
- * imperatively (a useEffect doing `el.innerHTML = ...`), not via React's
- * dangerouslySetInnerHTML, and skipNextSyncRef distinguishes "this change came
- * from typing right here, the DOM is already correct, don't touch it" from
- * "this change came from the plain-text editor / a file upload, re-render the
- * HTML from scratch." Rewriting a focused contentEditable's innerHTML on every
- * keystroke would otherwise reset the cursor to the start on every keystroke.
+ * Both the cover and the body are directly editable (Word-style, via
+ * EditorToolbar and useEditableMarkdown — see that hook for how the cursor
+ * survives re-renders). They're two independent regions; `activeEditableRef`
+ * tracks whichever one was last focused, so the single shared toolbar always
+ * acts on the right one.
  */
 const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function PreviewPane(
-  { markdown, settings, onMarkdownChange, onCoverPageChange },
+  { markdown, settings, onMarkdownChange, onCoverContentChange },
   ref,
 ) {
   const cover = settings.coverPage
-  const html = useMemo(() => renderMarkdownToHtml(markdown), [markdown])
   const vars = useMemo(() => buildPreviewVars(settings), [settings])
-  const coverLogosHtml = useMemo(() => logoGroupsHtml(cover.logos), [cover.logos])
   const headerHtml = useMemo(() => renderHeaderBandHtml(settings.headerFooter), [settings.headerFooter])
   const footerHtml = useMemo(() => renderFooterBandHtml(settings.headerFooter), [settings.headerFooter])
   const watermarkHtml = useMemo(() => renderWatermarkHtml(settings.watermark), [settings.watermark])
 
+  const body = useEditableMarkdown(markdown, onMarkdownChange)
+  const coverRegion = useEditableMarkdown(cover.content, onCoverContentChange)
+
+  useImperativeHandle(ref, () => body.elRef.current as HTMLDivElement)
+
   const containerRef = useRef<HTMLDivElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
-  const exportTargetRef = useRef<HTMLDivElement>(null)
   const [pageSize, setPageSize] = useState({ width: 0, height: 0 })
   const [scale, setScale] = useState(1)
 
-  useImperativeHandle(ref, () => exportTargetRef.current as HTMLDivElement)
+  // Whichever editable region was last focused — defaults to the body so the
+  // toolbar has something sensible to act on before the user clicks anywhere.
+  const activeEditableRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    activeEditableRef.current = body.elRef.current
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     const container = containerRef.current
@@ -93,111 +87,75 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
     ro.observe(container)
     ro.observe(page)
     return () => ro.disconnect()
-  }, [html, vars, headerHtml, footerHtml, cover.enabled, cover.title, cover.subtitle, coverLogosHtml])
+  }, [markdown, vars, headerHtml, footerHtml, cover.enabled, cover.content])
 
-  // Imperative content sync — see the component doc comment above for why.
-  const skipNextSyncRef = useRef(false)
-  useEffect(() => {
-    const el = exportTargetRef.current
-    if (!el) return
-    if (skipNextSyncRef.current) {
-      skipNextSyncRef.current = false
-      return
-    }
-    el.innerHTML = html
-  }, [html])
-
-  const syncFromDom = useCallback(() => {
-    const el = exportTargetRef.current
-    if (!el) return
-    const newMarkdown = htmlToMarkdown(el.innerHTML)
-    if (newMarkdown === markdown) return
-    skipNextSyncRef.current = true
-    onMarkdownChange(newMarkdown)
-  }, [markdown, onMarkdownChange])
-
-  const debounceRef = useRef<number | undefined>(undefined)
-  const handleInput = () => {
-    window.clearTimeout(debounceRef.current)
-    debounceRef.current = window.setTimeout(syncFromDom, SYNC_DEBOUNCE_MS)
-  }
-  const handleBlur = () => {
-    window.clearTimeout(debounceRef.current)
-    syncFromDom()
+  const handleToolbarEdited = () => {
+    if (activeEditableRef.current === coverRegion.elRef.current) coverRegion.handleInput()
+    else body.handleInput()
   }
 
-  const insertImageAtCursor = async (file: File) => {
+  const insertImageIntoRegion = async (region: EditableMarkdownRegion, file: File) => {
     if (!file.type.startsWith('image/')) return
     const dataUrl = await fileToDataUrl(file)
-    exportTargetRef.current?.focus()
+    region.elRef.current?.focus()
     document.execCommand('insertImage', false, dataUrl)
-    syncFromDom()
+    region.syncNow()
   }
 
-  const handleDrop = (e: ReactDragEvent<HTMLDivElement>) => {
+  const makeDropHandler = (region: EditableMarkdownRegion) => (e: ReactDragEvent<HTMLDivElement>) => {
     const file = e.dataTransfer.files?.[0]
     if (!file) return
     e.preventDefault()
-    insertImageAtCursor(file)
+    insertImageIntoRegion(region, file)
   }
 
-  const handlePaste = (e: ReactClipboardEvent<HTMLDivElement>) => {
+  const makePasteHandler = (region: EditableMarkdownRegion) => (e: ReactClipboardEvent<HTMLDivElement>) => {
     const item = Array.from(e.clipboardData.items).find((it) => it.type.startsWith('image/'))
     const file = item?.getAsFile()
     if (!file) return
     e.preventDefault()
-    insertImageAtCursor(file)
+    insertImageIntoRegion(region, file)
   }
 
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-col">
-      <EditorToolbar editableRef={exportTargetRef} onEdited={handleInput} />
+      <EditorToolbar editableRef={activeEditableRef} onEdited={handleToolbarEdited} />
       <div ref={containerRef} className="flex w-full min-w-0 flex-1 justify-center overflow-x-auto py-8 px-4">
         <div style={{ width: pageSize.width * scale || undefined, height: pageSize.height * scale || undefined }}>
           <div ref={pageRef} className="md-page-wrap page-shell" style={{ ...vars, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
-            {/* Shown whenever the cover is turned on, even with nothing typed yet —
-                unlike the export paths (headerFooterMarkup.ts's renderCoverPageHtml,
-                pdfCoverPage.ts, docxHeaderFooter.ts), which skip a genuinely empty
-                cover, this needs to render blank so there's something to click into. */}
             {cover.enabled && (
               <>
-                <div className="md-cover-page">
-                  {cover.logos.length > 0 && (
-                    <div className="md-cover-logos" dangerouslySetInnerHTML={{ __html: coverLogosHtml }} />
-                  )}
-                  <div className="md-cover-body">
-                    <EditableText
-                      as="h1"
-                      className="md-cover-title"
-                      value={cover.title}
-                      placeholder="Título del documento"
-                      onChange={(title) => onCoverPageChange({ title })}
-                    />
-                    <EditableText
-                      as="p"
-                      className="md-cover-subtitle"
-                      value={cover.subtitle}
-                      placeholder="Subtítulo, fecha, autor…"
-                      onChange={(subtitle) => onCoverPageChange({ subtitle })}
-                    />
-                  </div>
-                </div>
+                <div
+                  ref={coverRegion.elRef}
+                  className="md-preview md-cover-page"
+                  style={vars}
+                  contentEditable
+                  suppressContentEditableWarning
+                  data-placeholder="Escribí el contenido de tu portada aquí…"
+                  onFocus={() => (activeEditableRef.current = coverRegion.elRef.current)}
+                  onInput={coverRegion.handleInput}
+                  onBlur={coverRegion.handleBlur}
+                  onDrop={makeDropHandler(coverRegion)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onPaste={makePasteHandler(coverRegion)}
+                />
                 <div className="page-break" data-page-break />
               </>
             )}
             {headerHtml && <div dangerouslySetInnerHTML={{ __html: headerHtml }} />}
             <div
-              ref={exportTargetRef}
+              ref={body.elRef}
               id="export-target"
               className="md-preview"
               style={vars}
               contentEditable
               suppressContentEditableWarning
-              onInput={handleInput}
-              onBlur={handleBlur}
-              onDrop={handleDrop}
+              onFocus={() => (activeEditableRef.current = body.elRef.current)}
+              onInput={body.handleInput}
+              onBlur={body.handleBlur}
+              onDrop={makeDropHandler(body)}
               onDragOver={(e) => e.preventDefault()}
-              onPaste={handlePaste}
+              onPaste={makePasteHandler(body)}
             />
             {footerHtml && <div dangerouslySetInnerHTML={{ __html: footerHtml }} />}
             {watermarkHtml && <div dangerouslySetInnerHTML={{ __html: watermarkHtml }} />}

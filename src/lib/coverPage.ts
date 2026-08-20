@@ -1,20 +1,15 @@
-import type { LogoItem } from './logos'
-
 export interface CoverPageSettings {
   enabled: boolean
-  title: string
-  subtitle: string
-  logos: LogoItem[]
+  /** Free-form Markdown — edited with the same WYSIWYG surface as the document body, see PreviewPane.tsx. */
+  content: string
 }
 
 export const DEFAULT_COVER_PAGE: CoverPageSettings = {
   enabled: false,
-  title: '',
-  subtitle: '',
-  logos: [],
+  content: '',
 }
 
-/** Whether the cover page has anything worth rendering as a leading page. */
+/** Whether the cover page has anything worth rendering as a leading page in an export. */
 export function hasCoverContent(cover: CoverPageSettings): boolean {
-  return cover.enabled && (cover.title.trim() !== '' || cover.subtitle.trim() !== '' || cover.logos.length > 0)
+  return cover.enabled && cover.content.trim() !== ''
 }

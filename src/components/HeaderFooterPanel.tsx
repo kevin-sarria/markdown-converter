@@ -32,32 +32,11 @@ export default function HeaderFooterPanel({ settings, onChange }: HeaderFooterPa
       <section className="flex flex-col gap-3">
         <h3 className="text-xs font-semibold uppercase tracking-wide text-white/40">Portada</h3>
         <Toggle checked={cover.enabled} onChange={(v) => patchCover({ enabled: v })} label="Activar" />
-
         {cover.enabled && (
-          <div className="flex flex-col gap-4 rounded-lg border border-white/10 p-3">
-            <div className="flex flex-col gap-2">
-              <span className="text-xs text-white/50">Logos</span>
-              <LogoListEditor logos={cover.logos} onChange={(logos) => patchCover({ logos })} maxWidthMm={100} />
-            </div>
-            <div className="flex flex-col gap-2">
-              <span className="text-xs text-white/50">Título</span>
-              <input
-                value={cover.title}
-                onChange={(e) => patchCover({ title: e.target.value })}
-                placeholder="Nombre del documento"
-                className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-white/80 outline-none focus:border-indigo-400/60"
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <span className="text-xs text-white/50">Subtítulo</span>
-              <input
-                value={cover.subtitle}
-                onChange={(e) => patchCover({ subtitle: e.target.value })}
-                placeholder="Descripción breve, fecha, autor…"
-                className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-sm text-white/80 outline-none focus:border-indigo-400/60"
-              />
-            </div>
-          </div>
+          <p className="text-xs leading-relaxed text-white/40">
+            Escribí el contenido directamente en la primera página de la vista previa — título, texto, imágenes,
+            lo que necesites, con la misma barra de herramientas que el resto del documento.
+          </p>
         )}
       </section>
 

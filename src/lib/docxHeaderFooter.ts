@@ -6,7 +6,6 @@ import {
   HorizontalPositionAlign,
   HorizontalPositionRelativeFrom,
   ImageRun,
-  PageBreak,
   PageNumber,
   Paragraph,
   Table,
@@ -19,7 +18,6 @@ import {
   WidthType,
   type ParagraphChild,
 } from 'docx'
-import type { CoverPageSettings } from './coverPage'
 import type { HeaderFooterSettings, WatermarkSettings } from './headerFooter'
 import { groupLogosByAlign, type LogoAlign, type LogoItem } from './logos'
 import type { getFontPairing } from './settings'
@@ -225,46 +223,4 @@ export function buildFooter(hf: HeaderFooterSettings, font: FontPairing): Footer
   return new Footer({
     children: [new Paragraph({ alignment: alignmentFor(hf.footerAlign), children })],
   })
-}
-
-/**
- * Builds the leading cover-page content (logos row, title, subtitle) followed by
- * a hard page break, meant to be prepended to the document body. See
- * coverPage.ts's hasCoverContent for the check callers should use before calling
- * this.
- */
-export async function buildCoverPageBlocks(cover: CoverPageSettings, font: FontPairing): Promise<(Paragraph | Table)[]> {
-  const out: (Paragraph | Table)[] = []
-
-  if (cover.logos.length > 0) {
-    const groups = groupLogosByAlign(cover.logos)
-    const table = buildThreeSlotTable({
-      left: await buildLogoRuns(groups.left, font),
-      center: await buildLogoRuns(groups.center, font),
-      right: await buildLogoRuns(groups.right, font),
-    })
-    if (table) out.push(table)
-  }
-
-  out.push(new Paragraph({}))
-  if (cover.title) {
-    out.push(
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        spacing: { before: 800, after: 200 },
-        children: [new TextRun({ text: cover.title, font: font.docx.heading, bold: true, size: 56 })],
-      }),
-    )
-  }
-  if (cover.subtitle) {
-    out.push(
-      new Paragraph({
-        alignment: AlignmentType.CENTER,
-        children: [new TextRun({ text: cover.subtitle, font: font.docx.body, size: 28, color: '666666' })],
-      }),
-    )
-  }
-  out.push(new Paragraph({ children: [new PageBreak()] }))
-
-  return out
 }

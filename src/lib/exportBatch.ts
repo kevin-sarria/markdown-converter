@@ -8,24 +8,26 @@ export type BatchFormat = 'pdf' | 'docx' | 'html'
 export interface BatchDoc {
   name: string
   markdown: string
+  /** Each file carries its own style/header/footer/cover — see App.tsx's per-file settings. */
+  settings: DocSettings
 }
 
 const EXTENSION: Record<BatchFormat, string> = { pdf: 'pdf', docx: 'docx', html: 'html' }
 
 // docx/html2pdf.js are heavy — keep them out of the main bundle, same as the
 // single-file export handlers in App.tsx, by importing only the format in use.
-async function buildBlob(format: BatchFormat, doc: BatchDoc, settings: DocSettings): Promise<Blob> {
+async function buildBlob(format: BatchFormat, doc: BatchDoc): Promise<Blob> {
   switch (format) {
     case 'pdf': {
       const { buildPdfBlob } = await import('./exportPdf')
-      return buildPdfBlob(doc.markdown, settings, doc.name)
+      return buildPdfBlob(doc.markdown, doc.settings, doc.name)
     }
     case 'docx': {
       const { buildDocxBlob } = await import('./exportDocx')
-      return buildDocxBlob(doc.markdown, settings)
+      return buildDocxBlob(doc.markdown, doc.settings)
     }
     case 'html':
-      return buildHtmlBlob(doc.markdown, settings, doc.name)
+      return buildHtmlBlob(doc.markdown, doc.settings, doc.name)
   }
 }
 
@@ -36,18 +38,14 @@ function uniqueName(name: string, used: Map<string, number>): string {
   return count === 0 ? name : `${name}-${count + 1}`
 }
 
-export async function downloadAllAsZip(
-  docs: BatchDoc[],
-  settings: DocSettings,
-  format: BatchFormat,
-): Promise<void> {
+export async function downloadAllAsZip(docs: BatchDoc[], format: BatchFormat): Promise<void> {
   const zip = new JSZip()
   const used = new Map<string, number>()
 
   // PDF rendering shares one hidden DOM node internally in html2canvas, so run
   // conversions sequentially rather than with Promise.all to avoid races.
   for (const doc of docs) {
-    const blob = await buildBlob(format, doc, settings)
+    const blob = await buildBlob(format, doc)
     const name = uniqueName(doc.name || 'documento', used)
     zip.file(`${name}.${EXTENSION[format]}`, blob)
   }

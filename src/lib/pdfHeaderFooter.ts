@@ -46,9 +46,9 @@ function alignX(align: 'left' | 'center' | 'right', pageWidthMm: number, marginM
  * Draws a horizontal row of logos anchored at `anchorX` (left edge, right edge, or
  * center, depending on `align`), vertically centered on `centerY`. Returns the
  * total width the row occupies, so callers can place adjacent text without
- * overlapping. Shared by the header band and the cover page.
+ * overlapping.
  */
-export function drawLogoGroup(pdf: jsPDF, logos: LogoItem[], align: LogoAlign, anchorX: number, centerY: number): number {
+function drawLogoGroup(pdf: jsPDF, logos: LogoItem[], align: LogoAlign, anchorX: number, centerY: number): number {
   const items = logos
     .map((logo) => {
       try {

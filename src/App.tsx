@@ -11,7 +11,7 @@ import { SAMPLE_MARKDOWN } from './lib/markdown'
 import { DEFAULT_SETTINGS, type DocSettings } from './lib/settings'
 
 function initialDocs(): DocFile[] {
-  return [{ id: makeDocId(), name: 'mi-documento', markdown: SAMPLE_MARKDOWN }]
+  return [{ id: makeDocId(), name: 'mi-documento', markdown: SAMPLE_MARKDOWN, settings: DEFAULT_SETTINGS }]
 }
 
 type MobileView = 'editor' | 'preview' | 'settings'
@@ -19,7 +19,6 @@ type MobileView = 'editor' | 'preview' | 'settings'
 export default function App() {
   const [docs, setDocs] = useState<DocFile[]>(initialDocs)
   const [activeId, setActiveId] = useState(docs[0].id)
-  const [settings, setSettings] = useState<DocSettings>(DEFAULT_SETTINGS)
   const [settingsOpen, setSettingsOpen] = useState(true)
   const [mobileView, setMobileView] = useState<MobileView>('editor')
   const [fileDrawerOpen, setFileDrawerOpen] = useState(false)
@@ -27,10 +26,19 @@ export default function App() {
 
   const activeDoc = docs.find((d) => d.id === activeId) ?? docs[0]
 
-  const patchSettings = (patch: Partial<DocSettings>) => setSettings((prev) => ({ ...prev, ...patch }))
-
   const updateActiveDoc = (patch: Partial<DocFile>) => {
     setDocs((prev) => prev.map((d) => (d.id === activeId ? { ...d, ...patch } : d)))
+  }
+
+  // Style/header/footer/watermark/cover live per file — editing always targets
+  // just the active document by default. See ApplySettingsMenu for copying the
+  // active document's settings onto other loaded files on purpose.
+  const patchSettings = (patch: Partial<DocSettings>) =>
+    updateActiveDoc({ settings: { ...activeDoc.settings, ...patch } })
+
+  const handleApplySettings = (targetIds: string[]) => {
+    const targetSet = new Set(targetIds)
+    setDocs((prev) => prev.map((d) => (targetSet.has(d.id) ? { ...d, settings: activeDoc.settings } : d)))
   }
 
   const handleUploadFiles = async (files: FileList) => {
@@ -41,7 +49,7 @@ export default function App() {
       list.map(async (file) => {
         const text = await file.text()
         const base = file.name.replace(/\.(md|markdown|txt)$/i, '')
-        return { id: makeDocId(), name: slugify(base), markdown: text }
+        return { id: makeDocId(), name: slugify(base), markdown: text, settings: DEFAULT_SETTINGS }
       }),
     )
 
@@ -70,22 +78,21 @@ export default function App() {
   const handleExportPdf = async () => {
     if (!previewRef.current) return
     const { exportToPdf } = await import('./lib/exportPdf')
-    await exportToPdf(previewRef.current, settings, slugify(activeDoc.name))
+    await exportToPdf(previewRef.current, activeDoc.settings, slugify(activeDoc.name))
   }
 
   const handleExportDocx = async () => {
     const { exportToDocx } = await import('./lib/exportDocx')
-    await exportToDocx(activeDoc.markdown, settings, slugify(activeDoc.name))
+    await exportToDocx(activeDoc.markdown, activeDoc.settings, slugify(activeDoc.name))
   }
 
   const handleExportHtml = () => {
-    exportToHtml(activeDoc.markdown, settings, slugify(activeDoc.name))
+    exportToHtml(activeDoc.markdown, activeDoc.settings, slugify(activeDoc.name))
   }
 
   const handleDownloadAll = async (format: BatchFormat) => {
     await downloadAllAsZip(
-      docs.map((d) => ({ name: slugify(d.name), markdown: d.markdown })),
-      settings,
+      docs.map((d) => ({ name: slugify(d.name), markdown: d.markdown, settings: d.settings })),
       format,
     )
   }
@@ -159,14 +166,20 @@ export default function App() {
           <PreviewPane
             ref={previewRef}
             markdown={activeDoc.markdown}
-            settings={settings}
+            settings={activeDoc.settings}
             onMarkdownChange={(markdown) => updateActiveDoc({ markdown })}
-            onCoverPageChange={(patch) => patchSettings({ coverPage: { ...settings.coverPage, ...patch } })}
+            onCoverContentChange={(content) => patchSettings({ coverPage: { ...activeDoc.settings.coverPage, content } })}
           />
         </div>
         {settingsOpen && (
           <div className={`min-h-0 min-w-0 w-full lg:w-auto ${mobileView === 'settings' ? 'flex flex-1' : 'hidden'} lg:flex`}>
-            <SettingsPanel settings={settings} onChange={patchSettings} />
+            <SettingsPanel
+              settings={activeDoc.settings}
+              onChange={patchSettings}
+              docs={docs}
+              activeDocId={activeDoc.id}
+              onApplySettings={handleApplySettings}
+            />
           </div>
         )}
       </div>

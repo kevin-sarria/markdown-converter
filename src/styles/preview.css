@@ -239,67 +239,23 @@
   object-fit: contain;
 }
 
-/* App-generated cover page — a full page-sized block shown once before the
-   document content, both on screen and in the HTML export. */
+/* App-generated cover page — free-form Markdown content (edited exactly like
+   the document body, see PreviewPane.tsx), rendered with the same .md-preview
+   typography, just clamped to one page's height. Shown once, before the
+   document content, both on screen, in the HTML export, and (clipped to
+   exactly one physical page) in the PDF — see exportPdf.ts. */
 .md-cover-page {
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  width: var(--p-width);
-  min-height: var(--p-height);
-  box-sizing: border-box;
-  padding: var(--p-margin-y) var(--p-margin-x);
-  background: var(--p-bg);
-  text-align: center;
-}
-
-.md-cover-logos {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1em;
-}
-
-.md-cover-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75em;
-}
-
-.md-cover-title {
-  margin: 0;
-  font-family: var(--p-font-heading);
-  color: var(--p-heading);
-  font-size: 2.4em;
-  font-weight: 700;
-}
-
-.md-cover-subtitle {
-  margin: 0;
-  font-family: var(--p-font-body);
-  color: var(--p-muted);
-  font-size: 1.2em;
-}
-
-/* Title/subtitle are directly editable (EditableText) — a placeholder shows
-   only while genuinely empty, and a quiet focus ring matches .md-preview:focus. */
-.md-cover-title,
-.md-cover-subtitle {
-  min-width: 2em;
+  height: var(--p-height);
+  overflow-y: auto;
+  overflow-x: hidden;
   outline: none;
-  border-radius: 4px;
 }
 
-.md-cover-title:focus,
-.md-cover-subtitle:focus {
-  box-shadow: 0 0 0 2px var(--p-accent);
+.pdf-export .md-cover-page {
+  overflow: hidden;
 }
 
-.md-cover-title:empty::before,
-.md-cover-subtitle:empty::before {
+.md-cover-page:empty::before {
   content: attr(data-placeholder);
   color: var(--p-muted);
   opacity: 0.6;
