@@ -317,3 +317,97 @@
   outline: 2px solid transparent;
   box-shadow: 0 0 0 2px var(--p-accent);
 }
+
+/* ─── Side-by-side layout (::: columnas — see lib/columns.ts) ─────────────── */
+
+/* The wrapper is contenteditable="false" so the caret treats the whole row as
+   one atomic node and can't tear it in half on backspace; each .md-col inside
+   is its own editable island. */
+.md-cols {
+  display: flex;
+  gap: 1em;
+  margin: 1em 0;
+  align-items: flex-start;
+  /* A row split across two pages reads as two broken half-rows, so keep it
+     whole — html2pdf honours this via its 'css' pagebreak mode. */
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.md-cols[data-align='centro'] {
+  align-items: center;
+}
+.md-cols[data-align='abajo'] {
+  align-items: flex-end;
+}
+
+/* Without min-width:0 a flex item refuses to shrink below its content, so one
+   wide image or one long line of code shoves the column past its share of the
+   row and the whole layout drifts off the page. */
+.md-col {
+  min-width: 0;
+}
+
+.md-col > *:first-child {
+  margin-top: 0;
+}
+.md-col > *:last-child {
+  margin-bottom: 0;
+}
+
+.md-col img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* An empty column would collapse to nothing and become impossible to click
+   into, so give it a floor and a hint of where it is. */
+.md-col:empty {
+  min-height: 2.5em;
+  border: 1px dashed var(--p-border);
+  border-radius: 6px;
+}
+
+/* Editing affordances. These are on-screen only: the PDF export node drops
+   them (see .pdf-export below) so no dashed outline leaks into the document. */
+.md-cols:hover {
+  outline: 1px dashed var(--p-border);
+  outline-offset: 6px;
+}
+
+.md-cols.md-cols-selected {
+  outline: 1px solid var(--p-accent);
+  outline-offset: 6px;
+}
+
+.pdf-export .md-cols,
+.pdf-export .md-col:empty {
+  outline: none;
+  border: none;
+}
+
+/* Drag handle sitting in the gap between two columns (ColumnDivider.tsx) and
+   the guide shown while dragging an image beside another (useImageSideDrop). */
+.md-col-divider {
+  position: absolute;
+  z-index: 20;
+  width: 9px;
+  border-radius: 5px;
+  background: var(--p-accent);
+  opacity: 0.25;
+  cursor: col-resize;
+}
+
+.md-col-divider:hover,
+.md-col-divider.is-dragging {
+  opacity: 0.75;
+}
+
+.md-side-drop-guide {
+  position: absolute;
+  z-index: 21;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--p-accent);
+  pointer-events: none;
+}

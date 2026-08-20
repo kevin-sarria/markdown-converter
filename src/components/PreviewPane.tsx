@@ -9,11 +9,18 @@ import {
   type ClipboardEvent as ReactClipboardEvent,
   type MouseEvent as ReactMouseEvent,
 } from 'react'
+import ColumnDividers from './ColumnDividers'
+import ColumnsRowMenu from './ColumnsRowMenu'
 import EditorToolbar from './EditorToolbar'
-import ImageResizeHandle, { type ImageSelection } from './ImageResizeHandle'
+import ImageResizeHandle from './ImageResizeHandle'
 import { renderHeaderBandHtml, renderFooterBandHtml, renderWatermarkHtml } from '../lib/headerFooterMarkup'
+import { buildRowHtml } from '../lib/columns'
+import { dropBeside, isColumnsRow, removeImageBlock, rowOf } from '../lib/columnsDom'
 import { CONTENT_IMAGE_MAX_DIMENSION, optimizeImageFile } from '../lib/imageOptimize'
+import { useColumnsRow } from '../hooks/useColumnsRow'
 import { useEditableMarkdown, type EditableMarkdownRegion } from '../hooks/useEditableMarkdown'
+import { useImageSelection } from '../hooks/useImageSelection'
+import { useImageSideDrop } from '../hooks/useImageSideDrop'
 import { buildPreviewVars } from '../lib/previewStyle'
 import type { DocSettings } from '../lib/settings'
 
@@ -41,9 +48,15 @@ interface PreviewPaneProps {
  *
  * Both the cover and the body are directly editable (Word-style, via
  * EditorToolbar and useEditableMarkdown — see that hook for how the cursor
- * survives re-renders). They're two independent regions; `activeEditableRef`
+ * survives re-renders). They're two independent regions; `activeRegionRef`
  * tracks whichever one was last focused, so the single shared toolbar always
  * acts on the right one.
+ *
+ * This component is deliberately a composition root: the editing behaviours it
+ * offers (image selection and resizing, columns rows, dragging an image beside
+ * another) each live in their own hook, and the editing chrome they need is
+ * drawn as absolutely-positioned overlays outside the page so none of it can
+ * end up in an export.
  */
 const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function PreviewPane(
   { markdown, settings, onMarkdownChange, onCoverContentChange },
@@ -65,13 +78,24 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
   const [pageSize, setPageSize] = useState({ width: 0, height: 0 })
   const [scale, setScale] = useState(1)
 
+  const image = useImageSelection()
+  const columnsRow = useColumnsRow()
+  const sideDrop = useImageSideDrop(containerRef)
+
   // Whichever editable region was last focused — defaults to the body so the
   // toolbar has something sensible to act on before the user clicks anywhere.
+  const activeRegionRef = useRef<EditableMarkdownRegion>(body)
   const activeEditableRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
+    activeRegionRef.current = body
     activeEditableRef.current = body.elRef.current
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const focusRegion = (region: EditableMarkdownRegion) => {
+    activeRegionRef.current = region
+    activeEditableRef.current = region.elRef.current
+  }
 
   useEffect(() => {
     const container = containerRef.current
@@ -91,29 +115,28 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
     return () => ro.disconnect()
   }, [markdown, vars, headerHtml, footerHtml, cover.enabled, cover.content])
 
-  const handleToolbarEdited = () => {
-    if (activeEditableRef.current === coverRegion.elRef.current) coverRegion.handleInput()
-    else body.handleInput()
+  const handleToolbarEdited = () => activeRegionRef.current.handleInput()
+
+  const handleInsertColumns = (count: number) => {
+    const region = activeRegionRef.current
+    region.elRef.current?.focus()
+    // An empty paragraph per column so the caret has somewhere to land, and one
+    // after the row so there's a way out of it — the same trick the page-break
+    // button uses.
+    const columns = Array.from({ length: count }, () => ({ widthPercent: null, html: '<p><br></p>' }))
+    document.execCommand('insertHTML', false, `${buildRowHtml(columns)}<p><br></p>`)
+    region.syncNow()
   }
 
-  // Clicking an image selects it (shows the resize handle, see
-  // ImageResizeHandle.tsx); clicking anything else deselects.
-  const [selectedImage, setSelectedImage] = useState<ImageSelection | null>(null)
-  useEffect(() => {
-    return () => selectedImage?.img.classList.remove('md-image-selected')
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedImage])
-
+  // Clicking an image selects it (shows the resize handle); clicking inside a
+  // columns row selects the row (shows its menu and dividers); clicking
+  // anywhere else clears both.
   const makeClickHandler = (region: EditableMarkdownRegion) => (e: ReactMouseEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement
-    selectedImage?.img.classList.remove('md-image-selected')
-    if (target.tagName === 'IMG') {
-      const img = target as HTMLImageElement
-      img.classList.add('md-image-selected')
-      setSelectedImage({ img, syncNow: region.syncNow })
-    } else {
-      setSelectedImage(null)
-    }
+    image.selectFrom(target, region.syncNow)
+
+    const row = rowOf(target)
+    columnsRow.select(isColumnsRow(row) ? { row, syncNow: region.syncNow } : null)
   }
 
   const insertImageIntoRegion = async (region: EditableMarkdownRegion, file: File) => {
@@ -124,8 +147,48 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
     region.syncNow()
   }
 
-  const makeDropHandler = (region: EditableMarkdownRegion) => (e: ReactDragEvent<HTMLDivElement>) => {
+  /**
+   * A drop can mean three different things, and they're distinguished here
+   * rather than in the hooks: land beside an image (creating or extending a
+   * columns row), insert a dropped file at the caret, or nothing at all.
+   *
+   * Both `clientX/Y` and the dropped file are read before the first `await` —
+   * after it the browser has already cleared the DataTransfer.
+   */
+  const makeDropHandler = (region: EditableMarkdownRegion) => async (e: ReactDragEvent<HTMLDivElement>) => {
+    const { clientX, clientY } = e
     const file = e.dataTransfer.files?.[0]
+    const target = sideDrop.targetAt(clientX, clientY)
+    const dragged = sideDrop.draggedImage()
+    const root = region.elRef.current
+
+    if (target && root && (file || dragged)) {
+      // Cancels the browser's own drag-and-drop move inside the contentEditable,
+      // which would otherwise fight with the surgery below.
+      e.preventDefault()
+
+      let incoming: string | null = null
+      if (file) {
+        if (file.type.startsWith('image/')) {
+          const dataUrl = await optimizeImageFile(file, { maxDimension: CONTENT_IMAGE_MAX_DIMENSION })
+          incoming = `<p><img src="${dataUrl}"></p>`
+        }
+      } else if (dragged && root.contains(dragged)) {
+        // Read the markup before removing it, and remove it before inserting,
+        // so the image never exists twice in the document.
+        incoming = `<p>${dragged.outerHTML}</p>`
+        removeImageBlock(dragged, root)
+      }
+
+      if (incoming) {
+        dropBeside(target, incoming, root)
+        region.syncNow()
+      }
+      sideDrop.clear()
+      return
+    }
+
+    sideDrop.clear()
     if (!file) return
     e.preventDefault()
     insertImageIntoRegion(region, file)
@@ -139,9 +202,30 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
     insertImageIntoRegion(region, file)
   }
 
+  const editableProps = (region: EditableMarkdownRegion) => ({
+    contentEditable: true,
+    suppressContentEditableWarning: true,
+    onFocus: () => focusRegion(region),
+    onInput: region.handleInput,
+    onBlur: region.handleBlur,
+    onDragStart: sideDrop.handleDragStart,
+    onDragOver: (e: ReactDragEvent<HTMLDivElement>) => {
+      e.preventDefault() // required for the drop to be allowed at all
+      sideDrop.handleDragOver(e)
+    },
+    onDragLeave: sideDrop.handleDragLeave,
+    onDrop: makeDropHandler(region),
+    onPaste: makePasteHandler(region),
+    onClick: makeClickHandler(region),
+  })
+
   return (
     <div className="flex min-h-0 w-full min-w-0 flex-col">
-      <EditorToolbar editableRef={activeEditableRef} onEdited={handleToolbarEdited} />
+      <EditorToolbar
+        editableRef={activeEditableRef}
+        onEdited={handleToolbarEdited}
+        onInsertColumns={handleInsertColumns}
+      />
       <div ref={containerRef} className="relative flex w-full min-w-0 flex-1 justify-center overflow-x-auto py-8 px-4">
         <div style={{ width: pageSize.width * scale || undefined, height: pageSize.height * scale || undefined }}>
           <div ref={pageRef} className="md-page-wrap page-shell" style={{ ...vars, transform: `scale(${scale})`, transformOrigin: 'top left' }}>
@@ -151,41 +235,29 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
                   ref={coverRegion.elRef}
                   className="md-preview md-cover-page"
                   style={vars}
-                  contentEditable
-                  suppressContentEditableWarning
                   data-placeholder="Escribí el contenido de tu portada aquí…"
-                  onFocus={() => (activeEditableRef.current = coverRegion.elRef.current)}
-                  onInput={coverRegion.handleInput}
-                  onBlur={coverRegion.handleBlur}
-                  onDrop={makeDropHandler(coverRegion)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onPaste={makePasteHandler(coverRegion)}
-                  onClick={makeClickHandler(coverRegion)}
+                  {...editableProps(coverRegion)}
                 />
                 <div className="page-break" data-page-break />
               </>
             )}
             {headerHtml && <div dangerouslySetInnerHTML={{ __html: headerHtml }} />}
-            <div
-              ref={body.elRef}
-              id="export-target"
-              className="md-preview"
-              style={vars}
-              contentEditable
-              suppressContentEditableWarning
-              onFocus={() => (activeEditableRef.current = body.elRef.current)}
-              onInput={body.handleInput}
-              onBlur={body.handleBlur}
-              onDrop={makeDropHandler(body)}
-              onDragOver={(e) => e.preventDefault()}
-              onPaste={makePasteHandler(body)}
-              onClick={makeClickHandler(body)}
-            />
+            <div ref={body.elRef} id="export-target" className="md-preview" style={vars} {...editableProps(body)} />
             {footerHtml && <div dangerouslySetInnerHTML={{ __html: footerHtml }} />}
             {watermarkHtml && <div dangerouslySetInnerHTML={{ __html: watermarkHtml }} />}
           </div>
         </div>
-        <ImageResizeHandle selection={selectedImage} scale={scale} containerRef={containerRef} />
+
+        {/* Editing chrome — positioned over the page, never part of it. */}
+        <ImageResizeHandle selection={image.selection} scale={scale} containerRef={containerRef} />
+        <ColumnsRowMenu controller={columnsRow} containerRef={containerRef} />
+        <ColumnDividers selection={columnsRow.selection} containerRef={containerRef} />
+        {sideDrop.guide && (
+          <div
+            className="md-side-drop-guide"
+            style={{ top: sideDrop.guide.top, left: sideDrop.guide.left, height: sideDrop.guide.height }}
+          />
+        )}
       </div>
     </div>
   )

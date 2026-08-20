@@ -1,5 +1,14 @@
 import { describe, expect, test } from 'vitest'
-import { buildRowHtml, isRowClose, normalizeWidths, parseColLine, parseRowOpen } from './columns'
+import {
+  buildRowHtml,
+  isRowClose,
+  normalizeWidths,
+  parseColLine,
+  parseRowOpen,
+  widthsAfterAdd,
+  widthsAfterDrag,
+  widthsAfterRemove,
+} from './columns'
 
 describe('parseRowOpen', () => {
   test('recognizes a bare row opener, defaulting to top alignment', () => {
@@ -131,5 +140,52 @@ describe('buildRowHtml', () => {
 
     expect(html).toContain('data-w="50"')
     expect(html).not.toContain('data-w="null"')
+  })
+})
+
+describe('widthsAfterAdd', () => {
+  test('makes room for the new column without disturbing the old ratio', () => {
+    const after = widthsAfterAdd([60, 40])
+
+    expect(after).toHaveLength(3)
+    expect(after.reduce((a, b) => a + b, 0)).toBe(100)
+    // The newcomer gets an equal share, and 60:40 stays 60:40 between the rest.
+    expect(after[2]).toBe(33)
+    expect(after[0] / after[1]).toBeCloseTo(60 / 40, 1)
+  })
+
+  test('splits evenly when the columns already were even', () => {
+    expect(widthsAfterAdd([50, 50])).toEqual([33, 33, 34])
+  })
+})
+
+describe('widthsAfterRemove', () => {
+  test('hands the freed space to the survivors, keeping their ratio', () => {
+    const after = widthsAfterRemove([50, 30, 20], 0)
+
+    expect(after).toHaveLength(2)
+    expect(after.reduce((a, b) => a + b, 0)).toBe(100)
+    expect(after[0] / after[1]).toBeCloseTo(30 / 20, 1)
+  })
+
+  test('leaves the last standing column at full width', () => {
+    expect(widthsAfterRemove([60, 40], 1)).toEqual([100])
+  })
+})
+
+describe('widthsAfterDrag', () => {
+  test('moves width from one neighbour to the other', () => {
+    expect(widthsAfterDrag(50, 50, 10)).toEqual([60, 40])
+    expect(widthsAfterDrag(50, 50, -10)).toEqual([40, 60])
+  })
+
+  test('never lets either neighbour past the minimum, however far you drag', () => {
+    expect(widthsAfterDrag(50, 50, 999)).toEqual([90, 10])
+    expect(widthsAfterDrag(50, 50, -999)).toEqual([10, 90])
+  })
+
+  test('keeps the pair adding up to what it started with', () => {
+    const [left, right] = widthsAfterDrag(70, 30, -17)
+    expect(left + right).toBe(100)
   })
 })

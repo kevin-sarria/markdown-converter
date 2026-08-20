@@ -148,6 +148,36 @@ function roundToHundred(values: number[]): number[] {
 }
 
 /**
+ * Width arithmetic for the editing gestures. Kept here, pure and separate from
+ * the DOM, because these are the calculations that go wrong quietly: a row that
+ * adds up to 97 or 103 looks almost right on screen and only shows up as a
+ * crooked column in the exported PDF.
+ */
+
+/** A new column takes an equal share; the existing ones shrink but keep their ratio. */
+export function widthsAfterAdd(current: number[]): number[] {
+  const share = 100 / (current.length + 1)
+  const shrink = (100 - share) / 100
+  return normalizeWidths([...current.map((w) => w * shrink), share])
+}
+
+/** The removed column's space goes back to the survivors, in proportion. */
+export function widthsAfterRemove(current: number[], index: number): number[] {
+  return normalizeWidths(current.filter((_, i) => i !== index))
+}
+
+/**
+ * Dragging the divider between two neighbours moves width from one to the
+ * other and touches nobody else, so the rest of the row stays put under the
+ * user's hands. `delta` is in percentage points of the whole row.
+ */
+export function widthsAfterDrag(left: number, right: number, delta: number): [number, number] {
+  const pair = left + right
+  const newLeft = Math.round(Math.min(pair - MIN_WIDTH_PERCENT, Math.max(MIN_WIDTH_PERCENT, left + delta)))
+  return [newLeft, pair - newLeft]
+}
+
+/**
  * The DOM shape of a row. Built here rather than in each caller so a row typed
  * as Markdown and a row inserted from the toolbar are byte-identical — the same
  * reason the page-break markup lives in one place.

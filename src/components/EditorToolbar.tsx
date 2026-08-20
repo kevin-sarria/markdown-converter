@@ -1,4 +1,5 @@
 import { useRef, type ReactNode, type RefObject } from 'react'
+import ColumnsButton from './ColumnsButton'
 import { CONTENT_IMAGE_MAX_DIMENSION, optimizeImageFile } from '../lib/imageOptimize'
 
 interface EditorToolbarProps {
@@ -6,6 +7,8 @@ interface EditorToolbarProps {
   editableRef: RefObject<HTMLDivElement | null>
   /** Called after a command runs, so the caller can re-sync Markdown from the edited DOM. */
   onEdited: () => void
+  /** Inserts a row of `count` side-by-side columns at the caret. */
+  onInsertColumns: (count: number) => void
 }
 
 const PAGE_BREAK_HTML =
@@ -31,7 +34,7 @@ function ToolbarButton({ onClick, title, children }: { onClick: () => void; titl
  * it's far less code than reimplementing Selection/Range manipulation by hand.
  * If it's ever actually removed from browsers, that's the place to revisit.
  */
-export default function EditorToolbar({ editableRef, onEdited }: EditorToolbarProps) {
+export default function EditorToolbar({ editableRef, onEdited, onInsertColumns }: EditorToolbarProps) {
   const imageInputRef = useRef<HTMLInputElement>(null)
   // Opening the native file picker always blurs the page, wiping the current
   // selection — save it on click so the image can still land at the cursor the
@@ -127,6 +130,7 @@ export default function EditorToolbar({ editableRef, onEdited }: EditorToolbarPr
       <ToolbarButton title="Insertar salto de página" onClick={() => exec('insertHTML', PAGE_BREAK_HTML)}>
         ⤓ Salto
       </ToolbarButton>
+      <ColumnsButton onInsert={onInsertColumns} />
 
       <input
         ref={imageInputRef}
