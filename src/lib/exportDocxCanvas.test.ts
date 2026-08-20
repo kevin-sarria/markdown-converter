@@ -65,3 +65,32 @@ describe('a canvas page in Word', () => {
     expect(xml).not.toContain('w:type="page"')
   })
 })
+
+describe('the style of a canvas box in Word', () => {
+  const STYLED = lines(
+    '::: lienzo',
+    ':: en 15,48 70 size=26 color=#0b2a6b align=centro',
+    'Entorno de producción',
+    ':::',
+  )
+
+  test('carries the size and the colour the box was given', async () => {
+    const xml = await documentXml(STYLED)
+
+    // Word measures type in half-points.
+    expect(xml).toContain('<w:sz w:val="52"/>')
+    expect(xml).toContain('w:val="0B2A6B"')
+  })
+
+  test('carries the alignment', async () => {
+    expect(await documentXml(STYLED)).toContain('<w:jc w:val="center"/>')
+  })
+
+  test('a box with no style follows the document, as it does on screen', async () => {
+    const plain = lines('::: lienzo', ':: en 10,10 30', 'texto', ':::')
+    const xml = await documentXml(plain)
+
+    expect(xml).not.toContain('w:val="0B2A6B"')
+    expect(xml).toContain('texto')
+  })
+})

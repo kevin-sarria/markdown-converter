@@ -1,4 +1,4 @@
-import type { CanvasItem } from './canvas'
+import type { CanvasBox } from './canvas'
 
 /**
  * Alignment snapping while dragging on a canvas page.
@@ -20,18 +20,18 @@ export interface SnapGuide {
 }
 
 export interface SnapResult {
-  item: CanvasItem
+  item: CanvasBox
   guides: SnapGuide[]
 }
 
 /** How close, in percent of the page, counts as "meant to line up". */
 export const SNAP_THRESHOLD_PERCENT = 0.8
 
-export function snapItem(
-  item: CanvasItem,
-  others: CanvasItem[],
+export function snapItem<T extends CanvasBox>(
+  item: T,
+  others: CanvasBox[],
   threshold = SNAP_THRESHOLD_PERCENT,
-): SnapResult {
+): { item: T; guides: SnapGuide[] } {
   const guides: SnapGuide[] = []
 
   const x = snapAxis(item.x, item.w, others.map((o) => ({ start: o.x, size: o.w })), threshold)

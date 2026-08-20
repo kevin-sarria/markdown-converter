@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
-import { readItem, writeItem, type CanvasItem } from '../lib/canvas'
+import {
+  NO_STYLE,
+  readItem,
+  writeItem,
+  writeItemStyle,
+  type CanvasItem,
+  type CanvasItemStyle,
+} from '../lib/canvas'
 import { addItem, canvasOf, itemOf, siblingBoxes } from '../lib/canvasDom'
 import { snapItem, type SnapGuide } from '../lib/canvasSnap'
 
@@ -45,6 +52,10 @@ export interface CanvasEditor {
   handlePageMouseDown: (e: ReactMouseEvent, canvas: HTMLElement, syncNow: () => void) => void
   addTextItem: () => void
   addImageItem: (dataUrl: string) => void
+  /** The style of the selected box, so the controls can show what it is. */
+  style: CanvasItemStyle
+  /** Changes part of the selected box's style; null on a field clears it. */
+  setStyle: (patch: Partial<CanvasItemStyle>) => void
 }
 
 interface DragState {
@@ -84,6 +95,8 @@ export function useCanvasEditor(): CanvasEditor {
   const [dragging, setDragging] = useState(false)
   const [editingText, setEditingText] = useState(false)
   const dragRef = useRef<DragState | null>(null)
+  /** Ends the drag in progress and detaches its listeners, if there is one. */
+  const releaseRef = useRef<(() => void) | null>(null)
 
   const stopTextEditing = useCallback((item: HTMLElement | undefined) => {
     item?.removeAttribute('contenteditable')
@@ -116,6 +129,15 @@ export function useCanvasEditor(): CanvasEditor {
     return () => observer.disconnect()
   }, [selection])
 
+  /**
+   * Starts a move or a resize, and listens for the rest of it.
+   *
+   * The listeners go on at this moment rather than from an effect keyed on the
+   * selection. An effect only runs after the render that the mousedown causes,
+   * which leaves a gap: a mouseup arriving inside that gap is never heard, the
+   * drag never ends, and the box stays stuck to the cursor with its toolbar
+   * hidden. Arming and listening in the same breath closes it.
+   */
   const armDrag = useCallback(
     (e: ReactMouseEvent, kind: DragState['kind'], corner: ResizeCorner | null, target: CanvasSelection) => {
       const rect = target.canvas.getBoundingClientRect()
@@ -131,9 +153,43 @@ export function useCanvasEditor(): CanvasEditor {
       }
       setDragging(true)
       target.item.classList.add(DRAGGING_CLASS)
+
+      const handleMouseMove = (move: MouseEvent) => {
+        const drag = dragRef.current
+        if (!drag) return
+
+        const dx = ((move.clientX - drag.startX) / drag.pageWidth) * 100
+        const dy = ((move.clientY - drag.startY) / drag.pageHeight) * 100
+        const moved =
+          drag.kind === 'move' ? moveBox(drag.origin, dx, dy) : resizeBox(drag.origin, drag.corner!, dx)
+
+        // Resizing shouldn't wander off its own anchor, so only a move snaps.
+        const snapped = drag.kind === 'move' ? snapItem(moved, drag.siblings) : { item: moved, guides: [] }
+        writeItem(target.item, snapped.item)
+        setGuides(snapped.guides)
+      }
+
+      const finish = () => {
+        window.removeEventListener('mousemove', handleMouseMove)
+        window.removeEventListener('mouseup', finish)
+        releaseRef.current = null
+
+        dragRef.current = null
+        setDragging(false)
+        setGuides([])
+        target.item.classList.remove(DRAGGING_CLASS)
+        target.syncNow()
+      }
+
+      window.addEventListener('mousemove', handleMouseMove)
+      window.addEventListener('mouseup', finish)
+      releaseRef.current = finish
     },
     [],
   )
+
+  // Unmounting mid-drag would otherwise leave the listeners behind.
+  useEffect(() => () => releaseRef.current?.(), [])
 
   const handleItemMouseDown = useCallback(
     (e: ReactMouseEvent, next: CanvasSelection) => {
@@ -154,40 +210,6 @@ export function useCanvasEditor(): CanvasEditor {
     },
     [armDrag, selection],
   )
-
-  useEffect(() => {
-    if (!selection) return
-
-    const handleMouseMove = (e: MouseEvent) => {
-      const drag = dragRef.current
-      if (!drag) return
-
-      const dx = ((e.clientX - drag.startX) / drag.pageWidth) * 100
-      const dy = ((e.clientY - drag.startY) / drag.pageHeight) * 100
-      const moved = drag.kind === 'move' ? moveBox(drag.origin, dx, dy) : resizeBox(drag.origin, drag.corner!, dx)
-
-      // Resizing shouldn't wander off its own anchor, so only a move snaps.
-      const snapped = drag.kind === 'move' ? snapItem(moved, drag.siblings) : { item: moved, guides: [] }
-      writeItem(selection.item, snapped.item)
-      setGuides(snapped.guides)
-    }
-
-    const handleMouseUp = () => {
-      if (!dragRef.current) return
-      dragRef.current = null
-      setDragging(false)
-      setGuides([])
-      selection.item.classList.remove(DRAGGING_CLASS)
-      selection.syncNow()
-    }
-
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('mouseup', handleMouseUp)
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('mouseup', handleMouseUp)
-    }
-  }, [selection])
 
   // Arrow keys for the placement a hand can't make.
   useEffect(() => {
@@ -240,7 +262,7 @@ export function useCanvasEditor(): CanvasEditor {
   const addAtClick = useCallback(
     (html: string, width: number) => {
       if (!page) return
-      addItem(page.canvas, html, { x: page.at.x, y: page.at.y, w: width, h: null })
+      addItem(page.canvas, html, { x: page.at.x, y: page.at.y, w: width, h: null, style: { ...NO_STYLE } })
       page.syncNow()
       setPage(null)
     },
@@ -265,6 +287,12 @@ export function useCanvasEditor(): CanvasEditor {
       selection.item.focus()
       setEditingText(true)
     }, [selection]),
+    style: selection ? readItem(selection.item).style : NO_STYLE,
+    setStyle: useCallback(
+      (patch: Partial<CanvasItemStyle>) =>
+        act((item) => writeItemStyle(item, { ...readItem(item).style, ...patch })),
+      [act],
+    ),
     bringToFront: useCallback(() => act((item) => canvasOf(item)?.appendChild(item)), [act]),
     sendToBack: useCallback(
       () =>

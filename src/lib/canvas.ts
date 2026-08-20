@@ -36,7 +36,8 @@ export const ITEM_ATTR = 'data-canvas-item'
 /** Small enough to be a logo, big enough to still be grabbable. */
 export const MIN_ITEM_PERCENT = 2
 
-export interface CanvasItem {
+/** Where an item sits. Snapping and clamping only ever touch this part. */
+export interface CanvasBox {
   /** Percent of the page, from its left edge. */
   x: number
   /** Percent of the page, from its top edge. */
@@ -47,7 +48,43 @@ export interface CanvasItem {
   h: number | null
 }
 
-export interface CanvasItemContent extends CanvasItem {
+export const CANVAS_ALIGNS = ['izquierda', 'centro', 'derecha'] as const
+export type CanvasAlign = (typeof CANVAS_ALIGNS)[number]
+
+export const CANVAS_FONTS = ['titulo', 'texto', 'mono'] as const
+export type CanvasFont = (typeof CANVAS_FONTS)[number]
+
+/** The smallest and largest type a page can usefully carry. */
+export const MIN_SIZE_PT = 4
+export const MAX_SIZE_PT = 200
+
+/**
+ * How a text box looks. It belongs to the box, not to the words inside it —
+ * Markdown can say **bold** and *italic*, and those keep working inside an item,
+ * but it has no way to express a colour or a point size. Rather than smuggling
+ * raw HTML into the document to get them (and with it, a way for pasted
+ * Markdown to inject anything), the box carries its own style and the Markdown
+ * stays Markdown.
+ *
+ * Every field is nullable and null means "inherit the document", so an item that
+ * was never styled adds no CSS at all and follows the theme like everything else.
+ */
+export interface CanvasItemStyle {
+  sizePt: number | null
+  /** A plain hex colour, or null. Nothing else is ever accepted — see readColor. */
+  color: string | null
+  align: CanvasAlign | null
+  font: CanvasFont | null
+}
+
+export const NO_STYLE: CanvasItemStyle = { sizePt: null, color: null, align: null, font: null }
+
+export interface CanvasItem extends CanvasBox {
+  style: CanvasItemStyle
+}
+
+export interface CanvasItemContent extends CanvasBox {
+  style?: CanvasItemStyle
   /** Already-rendered inner HTML of the item. */
   html?: string
 }
@@ -65,18 +102,69 @@ export function parseItemLine(line: string): CanvasItem | null {
   const match = line.trim().match(/^::\s+en\b(.*)$/)
   if (!match) return null
 
-  const numbers = match[1]
-    .trim()
-    .match(/^(-?[\d.]+)\s*,\s*(-?[\d.]+)\s+([\d.]+)(?:\s*x\s*([\d.]+))?$/)
-  if (!numbers) return { x: 0, y: 0, w: 100, h: null }
+  const rest = match[1].trim()
+  const numbers = rest.match(/^(-?[\d.]+)\s*,\s*(-?[\d.]+)\s+([\d.]+)(?:\s*x\s*([\d.]+))?/)
+  if (!numbers) return { x: 0, y: 0, w: 100, h: null, style: { ...NO_STYLE } }
 
-  const [, x, y, w, h] = numbers
-  return { x: Number(x), y: Number(y), w: Number(w), h: h === undefined ? null : Number(h) }
+  const [matched, x, y, w, h] = numbers
+  return {
+    x: Number(x),
+    y: Number(y),
+    w: Number(w),
+    h: h === undefined ? null : Number(h),
+    style: parseStyleProps(rest.slice(matched.length)),
+  }
 }
 
-export function formatItemLine(item: CanvasItem): string {
+/** `size=26 color=#0b2a6b align=centro font=titulo`, in any order, all optional. */
+function parseStyleProps(text: string): CanvasItemStyle {
+  const props = new Map<string, string>()
+  for (const [, key, value] of text.matchAll(/(\w+)=(\S+)/g)) props.set(key, value)
+
+  return {
+    sizePt: readSize(props.get('size')),
+    color: readColor(props.get('color')),
+    align: readOneOf(props.get('align'), CANVAS_ALIGNS),
+    font: readOneOf(props.get('font'), CANVAS_FONTS),
+  }
+}
+
+/**
+ * Only a plain hex colour, ever.
+ *
+ * This value is written straight into the element's `style` attribute, so
+ * anything else the browser would accept as CSS is a way into the page. The
+ * strict pattern is the whole defence: what doesn't match is dropped, never
+ * repaired.
+ */
+function readColor(value: string | undefined): string | null {
+  if (!value) return null
+  return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value) ? value : null
+}
+
+function readSize(value: string | undefined): number | null {
+  if (value === undefined) return null
+  const size = Number(value)
+  if (!Number.isFinite(size) || size < MIN_SIZE_PT) return null
+  return Math.min(MAX_SIZE_PT, Math.round(size * 10) / 10)
+}
+
+function readOneOf<T extends string>(value: string | undefined, allowed: readonly T[]): T | null {
+  return value !== undefined && (allowed as readonly string[]).includes(value) ? (value as T) : null
+}
+
+export function formatItemLine(item: CanvasBox & { style?: CanvasItemStyle }): string {
   const size = item.h === null ? num(item.w) : `${num(item.w)}x${num(item.h)}`
-  return `${ITEM_PREFIX} ${num(item.x)},${num(item.y)} ${size}`
+  const style = item.style ?? NO_STYLE
+
+  const props = [
+    style.sizePt === null ? null : `size=${num(style.sizePt)}`,
+    style.color === null ? null : `color=${style.color}`,
+    style.align === null ? null : `align=${style.align}`,
+    style.font === null ? null : `font=${style.font}`,
+  ].filter(Boolean)
+
+  return [`${ITEM_PREFIX} ${num(item.x)},${num(item.y)} ${size}`, ...props].join(' ')
 }
 
 /**
@@ -92,7 +180,7 @@ function num(value: number): string {
  * would be invisible and unreachable — there is no way to drag back something
  * you cannot see, and no undo here to rescue it.
  */
-export function clampItem<T extends CanvasItem>(item: T): T {
+export function clampItem<T extends CanvasBox>(item: T): T {
   const w = clamp(item.w, MIN_ITEM_PERCENT, 100)
   const h = item.h === null ? null : clamp(item.h, MIN_ITEM_PERCENT, 100)
   return {
@@ -129,15 +217,51 @@ export function canvasOpenTag(): string {
   return `<div class="${CANVAS_CLASS}" ${CANVAS_ATTR} contenteditable="false">`
 }
 
-export function itemOpenTag(raw: CanvasItem): string {
+const CSS_ALIGN: Record<CanvasAlign, string> = {
+  izquierda: 'left',
+  centro: 'center',
+  derecha: 'right',
+}
+
+const CSS_FONT: Record<CanvasFont, string> = {
+  titulo: 'var(--p-font-heading)',
+  texto: 'var(--p-font-body)',
+  mono: 'var(--p-font-mono)',
+}
+
+export function itemOpenTag(raw: CanvasItemContent | CanvasItem): string {
   const item = clampItem(raw)
-  const height = item.h === null ? '' : ` height: ${num(item.h)}%;`
-  return (
-    `<div class="${ITEM_CLASS}" ${ITEM_ATTR} ` +
-    `data-x="${num(item.x)}" data-y="${num(item.y)}" data-w="${num(item.w)}"` +
-    (item.h === null ? '' : ` data-h="${num(item.h)}"`) +
-    ` style="left: ${num(item.x)}%; top: ${num(item.y)}%; width: ${num(item.w)}%;${height}">`
-  )
+  const style = ('style' in raw ? raw.style : null) ?? NO_STYLE
+
+  // Only what was actually set. An item that was never styled must add no CSS
+  // at all, so it keeps following the document's theme like everything else.
+  const css = [
+    `left: ${num(item.x)}%`,
+    `top: ${num(item.y)}%`,
+    `width: ${num(item.w)}%`,
+    item.h === null ? null : `height: ${num(item.h)}%`,
+    style.sizePt === null ? null : `font-size: ${num(style.sizePt)}pt`,
+    style.color === null ? null : `color: ${style.color}`,
+    style.align === null ? null : `text-align: ${CSS_ALIGN[style.align]}`,
+    style.font === null ? null : `font-family: ${CSS_FONT[style.font]}`,
+  ]
+    .filter(Boolean)
+    .join('; ')
+
+  const data = [
+    `data-x="${num(item.x)}"`,
+    `data-y="${num(item.y)}"`,
+    `data-w="${num(item.w)}"`,
+    item.h === null ? null : `data-h="${num(item.h)}"`,
+    style.sizePt === null ? null : `data-size="${num(style.sizePt)}"`,
+    style.color === null ? null : `data-color="${style.color}"`,
+    style.align === null ? null : `data-align="${style.align}"`,
+    style.font === null ? null : `data-font="${style.font}"`,
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  return `<div class="${ITEM_CLASS}" ${ITEM_ATTR} ${data} style="${css}">`
 }
 
 /** Reads an item's box back off the DOM, where dragging keeps it up to date. */
@@ -157,7 +281,30 @@ export function readItem(element: HTMLElement): CanvasItem {
     y: read('data-y') ?? 0,
     w: read('data-w') ?? 100,
     h: read('data-h'),
+    style: {
+      sizePt: readSize(element.getAttribute('data-size') ?? undefined),
+      color: readColor(element.getAttribute('data-color') ?? undefined),
+      align: readOneOf(element.getAttribute('data-align') ?? undefined, CANVAS_ALIGNS),
+      font: readOneOf(element.getAttribute('data-font') ?? undefined, CANVAS_FONTS),
+    },
   })
+}
+
+/** Applies a style to an item in the DOM, by rebuilding its tag's attributes. */
+export function writeItemStyle(element: HTMLElement, style: CanvasItemStyle): void {
+  const item = readItem(element)
+  const holder = document.createElement('div')
+  holder.innerHTML = `${itemOpenTag({ ...item, style })}</div>`
+  const fresh = holder.firstElementChild as HTMLElement
+
+  // Copy the computed attributes over rather than replacing the node: the node
+  // is what the editor has selected and what holds the user's content.
+  for (const name of ['data-size', 'data-color', 'data-align', 'data-font']) {
+    const value = fresh.getAttribute(name)
+    if (value === null) element.removeAttribute(name)
+    else element.setAttribute(name, value)
+  }
+  element.setAttribute('style', fresh.getAttribute('style') ?? '')
 }
 
 /** Writes a box onto an item: the attributes are the truth, the style follows. */

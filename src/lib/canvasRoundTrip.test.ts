@@ -99,6 +99,34 @@ describe('a canvas page survives the round trip', () => {
     expect(itemsOf(back)[0]?.style.height).toBe('30%')
   })
 
+  test('keeps the size, colour, alignment and typeface of a box', () => {
+    const styled = lines(
+      '::: lienzo',
+      ':: en 15,48 70 size=26 color=#0b2a6b align=centro font=titulo',
+      '**Entorno de producción**',
+      ':::',
+    )
+
+    const back = roundTrip(styled)
+    expect(back).toContain('size=26')
+    expect(back).toContain('color=#0b2a6b')
+    expect(back).toContain('align=centro')
+    expect(back).toContain('font=titulo')
+
+    const item = itemsOf(back)[0]
+    expect(item.style.fontSize).toBe('26pt')
+    expect(item.style.textAlign).toBe('center')
+    expect(item.querySelector('strong')).not.toBeNull()
+  })
+
+  test('a box that was never styled stays that way', () => {
+    const back = roundTrip(lines('::: lienzo', ':: en 10,10 30', 'texto', ':::'))
+
+    expect(back).toContain(':: en 10,10 30')
+    expect(back).not.toContain('size=')
+    expect(back).not.toContain('color=')
+  })
+
   test('keeps an item the user emptied, so its place is not lost', () => {
     const html =
       '<div class="md-canvas" data-canvas contenteditable="false">' +

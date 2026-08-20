@@ -189,6 +189,14 @@ interface BuildCtx {
    * converting a canvas item, absent everywhere else. Paragraphs that share a
    * frame definition are a single frame to Word. */
   frame?: IFrameOptions
+  /** The canvas box's own look, applied to everything inside it. Absent means
+   * "follow the document", exactly as it does on screen. */
+  boxStyle?: {
+    sizePt: number | null
+    color: string | null
+    align: (typeof AlignmentType)[keyof typeof AlignmentType] | null
+    font: string | null
+  }
   /** print-safe (white-page) substitutes for theme.heading / theme.text — see exportToDocx */
   safeHeading: string
   safeText: string
@@ -333,12 +341,15 @@ function baseIndent(ctx: StyleCtx) {
 }
 
 function headingParagraph(inline: Token, level: number, build: BuildCtx): Paragraph {
+  const box = build.boxStyle
   const scale = level === 1 ? 2.1 : level === 2 ? 1.6 : level === 3 ? 1.3 : level === 4 ? 1.1 : 1
-  const size = hexPt(Math.round(build.baseSize * scale * 10) / 10)
+  // A box that was given a size means that size, not that size times a heading
+  // multiplier — on screen the box's font-size wins for the same reason.
+  const size = hexPt(box?.sizePt ?? Math.round(build.baseSize * scale * 10) / 10)
   const runs = runsFromInline(inline?.children ?? [], {
-    font: build.font.docx.heading,
+    font: box?.font ?? build.font.docx.heading,
     size,
-    color: build.safeHeading,
+    color: box?.color ?? build.safeHeading,
     bold: true,
     images: build.images,
     maxImageWidthPx: build.imageMaxWidthPx,
@@ -346,6 +357,7 @@ function headingParagraph(inline: Token, level: number, build: BuildCtx): Paragr
   })
   return new Paragraph({
     frame: build.frame,
+    alignment: box?.align ?? undefined,
     children: runs,
     spacing: { before: 320, after: 160 },
     border:
@@ -356,11 +368,12 @@ function headingParagraph(inline: Token, level: number, build: BuildCtx): Paragr
 }
 
 function bodyParagraph(inline: Token, ctx: StyleCtx, build: BuildCtx): Paragraph {
-  const size = hexPt(build.baseSize)
+  const box = build.boxStyle
+  const size = hexPt(box?.sizePt ?? build.baseSize)
   const runs = runsFromInline(inline?.children ?? [], {
-    font: build.font.docx.body,
+    font: box?.font ?? build.font.docx.body,
     size,
-    color: ctx.blockquote ? HEX(build.theme.muted) : build.safeText,
+    color: box?.color ?? (ctx.blockquote ? HEX(build.theme.muted) : build.safeText),
     italic: ctx.blockquote,
     images: build.images,
     maxImageWidthPx: build.imageMaxWidthPx,
@@ -373,6 +386,7 @@ function bodyParagraph(inline: Token, ctx: StyleCtx, build: BuildCtx): Paragraph
 
   return new Paragraph({
     frame: build.frame,
+    alignment: box?.align ?? undefined,
     children: runs.length > 0 ? runs : [new TextRun({ text: '', font: build.font.docx.body, size })],
     spacing: { ...lineSpacing(build), before: 60, after: 120 },
     indent: baseIndent(ctx),
@@ -631,6 +645,48 @@ const CELL_VERTICAL_ALIGN = {
  * image budget: an image sized for the full page would spill out of a narrow
  * cell, so each column passes down its own share.
  */
+const CANVAS_ALIGNMENT = {
+  izquierda: AlignmentType.LEFT,
+  centro: AlignmentType.CENTER,
+  derecha: AlignmentType.RIGHT,
+} as const
+
+/**
+ * The box's own look, read off the same token attributes the browser renders
+ * from (see canvasPlugin.ts), so Word and the screen agree by construction.
+ */
+function readBoxStyle(token: Token, build: BuildCtx): BuildCtx['boxStyle'] {
+  const size = token.attrGet('size')
+  const color = token.attrGet('color')
+  const align = token.attrGet('align')
+  const font = token.attrGet('font')
+
+  const family =
+    font === 'titulo'
+      ? build.font.docx.heading
+      : font === 'texto'
+        ? build.font.docx.body
+        : font === 'mono'
+          ? build.font.docx.mono
+          : null
+
+  return {
+    sizePt: size === null ? null : Number(size),
+    // Word wants six hex digits with no hash; the value was already validated
+    // as a hex colour when the document was parsed.
+    color: color === null ? null : expandHex(String(color)),
+    align: align === null ? null : (CANVAS_ALIGNMENT[String(align) as keyof typeof CANVAS_ALIGNMENT] ?? null),
+    font: family,
+  }
+}
+
+/** `#abc` and `#aabbcc` both become `AABBCC`. */
+function expandHex(color: string): string {
+  const hex = color.replace('#', '')
+  const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex
+  return full.toUpperCase()
+}
+
 /** An item with no pinned height still needs one for a Word frame to exist. */
 const DEFAULT_ITEM_HEIGHT_PERCENT = 12
 
@@ -667,6 +723,8 @@ function convertCanvasPage(
       continue
     }
 
+    const boxStyle = readBoxStyle(token, build)
+
     const percent = (name: string, fallback: number) => {
       const value = Number(token.attrGet(name))
       return Number.isFinite(value) ? value : fallback
@@ -695,6 +753,7 @@ function convertCanvasPage(
       ...convertBlocks(tokens, cursor, 'canvas_item_close', ctx, {
         ...build,
         frame,
+        boxStyle,
         // The item's box decides how big its picture is, exactly as on screen.
         imageExactWidthPx: Math.round(((wPercent / 100) * contentWidthMm * 96) / 25.4),
       }),

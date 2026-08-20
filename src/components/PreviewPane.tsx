@@ -289,7 +289,7 @@ const PreviewPane = forwardRef<HTMLDivElement, PreviewPaneProps>(function Previe
         <ColumnsRowMenu controller={columnsRow} containerRef={containerRef} />
         <ColumnDividers selection={columnsRow.selection} containerRef={containerRef} />
         <CanvasOverlay editor={canvas} containerRef={containerRef} />
-        <CanvasItemMenu editor={canvas} containerRef={containerRef} />
+        <CanvasItemMenu editor={canvas} containerRef={containerRef} settings={settings} />
         <CanvasPageMenu editor={canvas} containerRef={containerRef} />
         {sideDrop.guide && (
           <div

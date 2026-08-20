@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest'
 import { snapItem } from './canvasSnap'
-import type { CanvasItem } from './canvas'
+import type { CanvasBox } from './canvas'
 
-const box = (x: number, y: number, w = 20, h: number | null = 10): CanvasItem => ({ x, y, w, h })
+const box = (x: number, y: number, w = 20, h: number | null = 10): CanvasBox => ({ x, y, w, h })
 
 describe('snapItem', () => {
   test('leaves a box alone when nothing is near', () => {

@@ -6,7 +6,7 @@ import {
   isCanvasOpen,
   parseItemLine,
   readItem,
-  type CanvasItem,
+  type CanvasBox,
 } from './canvas'
 
 describe('isCanvasOpen', () => {
@@ -24,24 +24,24 @@ describe('isCanvasOpen', () => {
 
 describe('parseItemLine', () => {
   test('reads position and width', () => {
-    expect(parseItemLine(':: en 14,8 22')).toEqual({ x: 14, y: 8, w: 22, h: null })
+    expect(parseItemLine(':: en 14,8 22')).toMatchObject({ x: 14, y: 8, w: 22, h: null })
   })
 
   test('reads an explicit height', () => {
-    expect(parseItemLine(':: en 14,8 22x30')).toEqual({ x: 14, y: 8, w: 22, h: 30 })
+    expect(parseItemLine(':: en 14,8 22x30')).toMatchObject({ x: 14, y: 8, w: 22, h: 30 })
   })
 
   test('keeps the precision of a fraction of a percent', () => {
-    expect(parseItemLine(':: en 14.5,8.25 22.5')).toEqual({ x: 14.5, y: 8.25, w: 22.5, h: null })
+    expect(parseItemLine(':: en 14.5,8.25 22.5')).toMatchObject({ x: 14.5, y: 8.25, w: 22.5, h: null })
   })
 
   test('tolerates spacing around the comma', () => {
-    expect(parseItemLine(':: en 14 , 8   22')).toEqual({ x: 14, y: 8, w: 22, h: null })
+    expect(parseItemLine(':: en 14 , 8   22')).toMatchObject({ x: 14, y: 8, w: 22, h: null })
   })
 
   test('falls back to a sane box when the numbers are missing', () => {
     // A malformed line is still an item — dropping it would delete its content.
-    expect(parseItemLine(':: en')).toEqual({ x: 0, y: 0, w: 100, h: null })
+    expect(parseItemLine(':: en')).toMatchObject({ x: 0, y: 0, w: 100, h: null })
   })
 
   test('rejects lines that are not items', () => {
@@ -72,7 +72,7 @@ describe('formatItemLine', () => {
 
 describe('clampItem', () => {
   test('leaves a box that is already on the page alone', () => {
-    const item: CanvasItem = { x: 10, y: 10, w: 30, h: 20 }
+    const item: CanvasBox = { x: 10, y: 10, w: 30, h: 20 }
     expect(clampItem(item)).toEqual(item)
   })
 
@@ -136,7 +136,7 @@ describe('readItem', () => {
   }
 
   test('reads the box off the attributes', () => {
-    expect(readItem(element({ 'data-x': '14', 'data-y': '8', 'data-w': '22', 'data-h': '30' }))).toEqual({
+    expect(readItem(element({ 'data-x': '14', 'data-y': '8', 'data-w': '22', 'data-h': '30' }))).toMatchObject({
       x: 14,
       y: 8,
       w: 22,
@@ -155,5 +155,106 @@ describe('readItem', () => {
     const item = readItem(element({ 'data-x': 'abc', 'data-y': '', 'data-w': 'x' }))
     expect(Number.isFinite(item.x)).toBe(true)
     expect(Number.isFinite(item.w)).toBe(true)
+  })
+})
+
+describe('item style in the marker line', () => {
+  test('reads size, colour, alignment and typeface', () => {
+    const item = parseItemLine(':: en 15,48 70 size=26 color=#0b2a6b align=centro font=titulo')!
+
+    expect(item.x).toBe(15)
+    expect(item.w).toBe(70)
+    expect(item.style).toEqual({ sizePt: 26, color: '#0b2a6b', align: 'centro', font: 'titulo' })
+  })
+
+  test('an item without style has none, not a made-up default', () => {
+    expect(parseItemLine(':: en 10,10 30')!.style).toEqual({
+      sizePt: null,
+      color: null,
+      align: null,
+      font: null,
+    })
+  })
+
+  test('reads a partial style and leaves the rest alone', () => {
+    expect(parseItemLine(':: en 10,10 30 color=#fff')!.style).toEqual({
+      sizePt: null,
+      color: '#fff',
+      align: null,
+      font: null,
+    })
+  })
+
+  test('still reads a pinned height alongside the style', () => {
+    const item = parseItemLine(':: en 10,10 30x20 size=12')!
+    expect(item.h).toBe(20)
+    expect(item.style.sizePt).toBe(12)
+  })
+
+  test('refuses a colour that is not a plain hex value', () => {
+    // This string ends up inside a style attribute. Anything but a hex colour
+    // is a way into the page's CSS, so it is dropped rather than sanitised.
+    for (const bad of ['red;background:url(x)', 'javascript:alert(1)', 'rgb(1,2,3)', '#ggg', 'expression(1)']) {
+      expect(parseItemLine(`:: en 0,0 50 color=${bad}`)!.style.color).toBeNull()
+    }
+  })
+
+  test('accepts both short and long hex', () => {
+    expect(parseItemLine(':: en 0,0 50 color=#FFF')!.style.color).toBe('#FFF')
+    expect(parseItemLine(':: en 0,0 50 color=#0b2a6b')!.style.color).toBe('#0b2a6b')
+  })
+
+  test('ignores an alignment or typeface it does not know', () => {
+    const style = parseItemLine(':: en 0,0 50 align=diagonal font=comic')!.style
+    expect(style.align).toBeNull()
+    expect(style.font).toBeNull()
+  })
+
+  test('keeps a font size within what a page can show', () => {
+    expect(parseItemLine(':: en 0,0 50 size=0')!.style.sizePt).toBeNull()
+    expect(parseItemLine(':: en 0,0 50 size=9999')!.style.sizePt).toBe(200)
+    expect(parseItemLine(':: en 0,0 50 size=abc')!.style.sizePt).toBeNull()
+  })
+})
+
+describe('writing the style back', () => {
+  test('a styled item survives being written and read again', () => {
+    const line = ':: en 15,48 70 size=26 color=#0b2a6b align=centro font=titulo'
+    expect(formatItemLine(parseItemLine(line)!)).toBe(line)
+  })
+
+  test('writes nothing for a style that was never set', () => {
+    expect(formatItemLine(parseItemLine(':: en 10,10 30')!)).toBe(':: en 10,10 30')
+  })
+
+  test('writes only the parts that are set', () => {
+    expect(formatItemLine(parseItemLine(':: en 10,10 30 size=14')!)).toBe(':: en 10,10 30 size=14')
+  })
+})
+
+describe('rendering a styled item', () => {
+  test('turns the style into the box\u2019s own CSS', () => {
+    const html = buildCanvasHtml([
+      {
+        x: 0,
+        y: 0,
+        w: 50,
+        h: null,
+        style: { sizePt: 26, color: '#0b2a6b', align: 'centro', font: 'titulo' },
+        html: '<p>A</p>',
+      },
+    ])
+
+    expect(html).toContain('font-size: 26pt')
+    expect(html).toContain('color: #0b2a6b')
+    expect(html).toContain('text-align: center')
+    expect(html).toContain('var(--p-font-heading)')
+  })
+
+  test('an unstyled item inherits the document, with no CSS of its own', () => {
+    const html = buildCanvasHtml([{ x: 0, y: 0, w: 50, h: null, html: '<p>A</p>' }])
+
+    expect(html).not.toContain('font-size')
+    expect(html).not.toContain('text-align')
   })
 })

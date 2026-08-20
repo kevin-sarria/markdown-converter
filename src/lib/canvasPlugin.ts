@@ -1,5 +1,13 @@
 import type { MarkdownIt as MarkdownItInstance, StateBlock } from 'markdown-it'
-import { canvasOpenTag, isCanvasOpen, itemOpenTag, parseItemLine, type CanvasItem } from './canvas'
+import {
+  canvasOpenTag,
+  isCanvasOpen,
+  itemOpenTag,
+  parseItemLine,
+  type CanvasAlign,
+  type CanvasFont,
+  type CanvasItem,
+} from './canvas'
 import { isRowClose } from './columns'
 import { fenceMarkerOf, findFenceAwareClose, type LineReader } from './containerScan'
 
@@ -22,14 +30,27 @@ export function canvasPlugin(md: MarkdownItInstance): void {
   md.renderer.rules.canvas_item_open = (tokens, idx) => {
     const token = tokens[idx]
     const height = token.attrGet('h')
+    const size = token.attrGet('size')
+
     return itemOpenTag({
       x: Number(token.attrGet('x')),
       y: Number(token.attrGet('y')),
       w: Number(token.attrGet('w')),
       h: height === null ? null : Number(height),
+      style: {
+        sizePt: size === null ? null : Number(size),
+        color: asText(token.attrGet('color')),
+        align: asText(token.attrGet('align')) as CanvasAlign | null,
+        font: asText(token.attrGet('font')) as CanvasFont | null,
+      },
     })
   }
   md.renderer.rules.canvas_item_close = () => '</div>'
+}
+
+/** markdown-it types an attribute as string | number; these were all set as strings. */
+function asText(value: string | number | null): string | null {
+  return value === null ? null : String(value)
 }
 
 function canvasRule(state: StateBlock, startLine: number, endLine: number, silent: boolean): boolean {
@@ -56,6 +77,13 @@ function canvasRule(state: StateBlock, startLine: number, endLine: number, silen
     token.attrSet('y', String(box.y))
     token.attrSet('w', String(box.w))
     if (box.h !== null) token.attrSet('h', String(box.h))
+    // The style was already read and validated by parseItemLine; carrying it on
+    // the token is what gets it to the renderer, which rebuilds the same tag the
+    // toolbar and the Turndown rule both work with.
+    if (box.style.sizePt !== null) token.attrSet('size', String(box.style.sizePt))
+    if (box.style.color !== null) token.attrSet('color', box.style.color)
+    if (box.style.align !== null) token.attrSet('align', box.style.align)
+    if (box.style.font !== null) token.attrSet('font', box.style.font)
 
     state.md.block.parse(`${lines.join('\n')}\n`, state.md, state.env, state.tokens)
     state.push('canvas_item_close', 'div', -1)
