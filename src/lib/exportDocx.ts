@@ -16,6 +16,7 @@ import {
   TableCell,
   TableRow,
   TextRun,
+  VerticalAlign,
   WidthType,
   type ILevelsOptions,
 } from 'docx'
@@ -49,6 +50,14 @@ interface ImageAsset {
   width: number
   height: number
 }
+
+/**
+ * How wide the page's text column is, in the pixels docx uses for image
+ * transformations. Images are capped to this so a big photo can't run off the
+ * page — and to a column's share of it inside a columns row, since an image
+ * scaled for the full width would spill straight out of a 40% cell.
+ */
+const DOCX_CONTENT_WIDTH_PX = 500
 
 const HEX = (color: string) => color.replace('#', '').toUpperCase()
 
@@ -93,6 +102,7 @@ export async function buildDocxBlob(markdownText: string, settings: DocSettings)
     lineHeight: settings.lineHeight,
     numberingConfigs,
     images,
+    imageMaxWidthPx: DOCX_CONTENT_WIDTH_PX,
     safeHeading,
     safeText,
   }
@@ -165,6 +175,8 @@ interface BuildCtx {
   lineHeight: number
   numberingConfigs: { reference: string; levels: readonly ILevelsOptions[] }[]
   images: Map<string, ImageAsset>
+  /** How wide an image may be here — narrower inside a column. See DOCX_CONTENT_WIDTH_PX. */
+  imageMaxWidthPx: number
   /** print-safe (white-page) substitutes for theme.heading / theme.text — see exportToDocx */
   safeHeading: string
   safeText: string
@@ -282,6 +294,12 @@ function convertBlocks(
         out.push(convertTable(tokens, cursor, build))
         break
       }
+      case 'columns_open': {
+        const align = String(t.attrGet('align') ?? 'arriba')
+        cursor.i++
+        out.push(convertColumnsRow(tokens, cursor, align, ctx, build))
+        break
+      }
       default: {
         cursor.i++
       }
@@ -306,6 +324,7 @@ function headingParagraph(inline: Token, level: number, build: BuildCtx): Paragr
     color: build.safeHeading,
     bold: true,
     images: build.images,
+    maxImageWidthPx: build.imageMaxWidthPx,
   })
   return new Paragraph({
     children: runs,
@@ -325,6 +344,7 @@ function bodyParagraph(inline: Token, ctx: StyleCtx, build: BuildCtx): Paragraph
     color: ctx.blockquote ? HEX(build.theme.muted) : build.safeText,
     italic: ctx.blockquote,
     images: build.images,
+    maxImageWidthPx: build.imageMaxWidthPx,
   })
 
   const topFrame = ctx.listStack[ctx.listStack.length - 1]
@@ -379,6 +399,8 @@ interface RunBaseProps {
   bold?: boolean
   italic?: boolean
   images?: Map<string, ImageAsset>
+  /** Widest this image may be drawn — the column's share of the page. */
+  maxImageWidthPx?: number
 }
 
 function runsFromInline(children: Token[], base: RunBaseProps): (TextRun | ExternalHyperlink | ImageRun)[] {
@@ -457,7 +479,7 @@ function runsFromInline(children: Token[], base: RunBaseProps): (TextRun | Exter
             new ImageRun({
               type: asset.type,
               data: asset.data,
-              transformation: { width: asset.width, height: asset.height },
+              transformation: fitWithin(asset, base.maxImageWidthPx),
               altText: { title: token.content || 'imagen', description: token.content || 'imagen', name: 'image' },
             }),
           )
@@ -547,6 +569,85 @@ function convertTable(tokens: Token[], cursor: Cursor, build: BuildCtx): Table {
   })
 }
 
+/** Scales an image down to fit the width available where it sits, keeping its ratio. */
+function fitWithin(asset: ImageAsset, maxWidthPx: number | undefined): { width: number; height: number } {
+  if (!maxWidthPx || asset.width <= maxWidthPx) return { width: asset.width, height: asset.height }
+  const scale = maxWidthPx / asset.width
+  return { width: Math.round(asset.width * scale), height: Math.round(asset.height * scale) }
+}
+
+const NO_BORDER = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' } as const
+
+const CELL_VERTICAL_ALIGN = {
+  arriba: VerticalAlign.TOP,
+  centro: VerticalAlign.CENTER,
+  abajo: VerticalAlign.BOTTOM,
+} as const
+
+/**
+ * A `::: columnas` row (see columns.ts) as a borderless one-row Word table.
+ *
+ * Word has no flow-layout columns that work mid-document — a table with
+ * invisible borders is how Word itself lays content out side by side, and it
+ * keeps every cell's text editable there instead of flattening the row into a
+ * picture.
+ *
+ * Each cell's content goes back through convertBlocks, so a list stays a list
+ * and a quote stays a quote inside a column. The only thing that changes is the
+ * image budget: an image sized for the full page would spill out of a narrow
+ * cell, so each column passes down its own share.
+ */
+function convertColumnsRow(
+  tokens: Token[],
+  cursor: Cursor,
+  align: string,
+  ctx: StyleCtx,
+  build: BuildCtx,
+): Table {
+  const cells: TableCell[] = []
+
+  while (cursor.i < tokens.length && tokens[cursor.i].type !== 'columns_close') {
+    const token = tokens[cursor.i]
+    if (token.type !== 'columns_col_open') {
+      cursor.i++
+      continue
+    }
+
+    const widthPercent = Number(token.attrGet('width')) || 0
+    cursor.i++
+
+    const children = convertBlocks(tokens, cursor, 'columns_col_close', ctx, {
+      ...build,
+      imageMaxWidthPx: Math.round((DOCX_CONTENT_WIDTH_PX * widthPercent) / 100),
+    })
+
+    cells.push(
+      new TableCell({
+        width: { size: widthPercent, type: WidthType.PERCENTAGE },
+        margins: { top: 0, bottom: 0, left: 60, right: 60 },
+        verticalAlign: CELL_VERTICAL_ALIGN[align as keyof typeof CELL_VERTICAL_ALIGN] ?? VerticalAlign.TOP,
+        // Word rejects a cell with no paragraph in it, and an emptied column is
+        // a shape the editor can legitimately produce.
+        children: children.length > 0 ? children : [new Paragraph({ text: '' })],
+      }),
+    )
+  }
+  cursor.i++ // columns_close
+
+  return new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [new TableRow({ children: cells })],
+    borders: {
+      top: NO_BORDER,
+      bottom: NO_BORDER,
+      left: NO_BORDER,
+      right: NO_BORDER,
+      insideHorizontal: NO_BORDER,
+      insideVertical: NO_BORDER,
+    },
+  })
+}
+
 function countCells(tokens: Token[], fromIdx: number): number {
   let count = 0
   let i = fromIdx
@@ -601,7 +702,11 @@ async function loadImageAsset(rawSrc: string): Promise<ImageAsset | null> {
   const type = sniffImageType(bytes)
   if (!type) return null
   const { width, height } = await readImageDimensions(buf, res.headers.get('content-type') ?? undefined)
-  const scale = widthPx ? widthPx / width : width > 500 ? 500 / width : 1
+  const scale = widthPx
+    ? widthPx / width
+    : width > DOCX_CONTENT_WIDTH_PX
+      ? DOCX_CONTENT_WIDTH_PX / width
+      : 1
   return { data: bytes, type, width: Math.round(width * scale), height: Math.round(height * scale) }
 }
 

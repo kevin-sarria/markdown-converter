@@ -14,6 +14,6 @@ export default defineConfig(({ command }) => ({
   // against a real DOM is the only way the test matches what users hit.
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
   },
 }))
