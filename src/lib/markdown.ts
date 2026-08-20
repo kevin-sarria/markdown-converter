@@ -93,6 +93,20 @@ lista para exportar a *PDF*, *Word* o *HTML*.
 - Exporta a \`PDF\`, \`DOCX\` y \`HTML\` totalmente en el navegador
 - Nada se sube a ningún servidor — todo ocurre en tu equipo
 
+## Contenido en columnas
+
+Con el botón **Columnas** de la barra podés poner dos o más bloques uno al lado
+del otro, y repartir el ancho arrastrando el separador:
+
+::: columnas centro
+:: col 55
+### A la izquierda
+Cualquier bloque entra acá: texto, listas, citas, imágenes.
+:: col 45
+### A la derecha
+También podés arrastrar una imagen al borde de otra para emparejarlas.
+:::
+
 ### Ejemplo de código
 
 \`\`\`js
