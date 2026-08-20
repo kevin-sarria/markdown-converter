@@ -5,6 +5,7 @@ import {
   Document,
   ExternalHyperlink,
   Footer,
+  FrameAnchorType,
   Header,
   ImageRun,
   LevelFormat,
@@ -18,6 +19,7 @@ import {
   TextRun,
   VerticalAlign,
   WidthType,
+  type IFrameOptions,
   type ILevelsOptions,
 } from 'docx'
 import { saveAs } from 'file-saver'
@@ -103,6 +105,7 @@ export async function buildDocxBlob(markdownText: string, settings: DocSettings)
     numberingConfigs,
     images,
     imageMaxWidthPx: DOCX_CONTENT_WIDTH_PX,
+    page: { widthMm: page.widthMm, heightMm: page.heightMm, marginMm: margin.mm },
     safeHeading,
     safeText,
   }
@@ -177,6 +180,15 @@ interface BuildCtx {
   images: Map<string, ImageAsset>
   /** How wide an image may be here — narrower inside a column. See DOCX_CONTENT_WIDTH_PX. */
   imageMaxWidthPx: number
+  /** Inside a canvas item, images are drawn at exactly this width, the way the
+   * preview draws them at 100% of the item's box. */
+  imageExactWidthPx?: number
+  /** The page this document is laid out on, for canvas positioning. */
+  page: { widthMm: number; heightMm: number; marginMm: number }
+  /** Pins every paragraph produced here to one spot on the page — set while
+   * converting a canvas item, absent everywhere else. Paragraphs that share a
+   * frame definition are a single frame to Word. */
+  frame?: IFrameOptions
   /** print-safe (white-page) substitutes for theme.heading / theme.text — see exportToDocx */
   safeHeading: string
   safeText: string
@@ -294,6 +306,11 @@ function convertBlocks(
         out.push(convertTable(tokens, cursor, build))
         break
       }
+      case 'canvas_open': {
+        cursor.i++
+        out.push(...convertCanvasPage(tokens, cursor, ctx, build))
+        break
+      }
       case 'columns_open': {
         const align = String(t.attrGet('align') ?? 'arriba')
         cursor.i++
@@ -325,8 +342,10 @@ function headingParagraph(inline: Token, level: number, build: BuildCtx): Paragr
     bold: true,
     images: build.images,
     maxImageWidthPx: build.imageMaxWidthPx,
+    exactImageWidthPx: build.imageExactWidthPx,
   })
   return new Paragraph({
+    frame: build.frame,
     children: runs,
     spacing: { before: 320, after: 160 },
     border:
@@ -345,6 +364,7 @@ function bodyParagraph(inline: Token, ctx: StyleCtx, build: BuildCtx): Paragraph
     italic: ctx.blockquote,
     images: build.images,
     maxImageWidthPx: build.imageMaxWidthPx,
+    exactImageWidthPx: build.imageExactWidthPx,
   })
 
   const topFrame = ctx.listStack[ctx.listStack.length - 1]
@@ -352,6 +372,7 @@ function bodyParagraph(inline: Token, ctx: StyleCtx, build: BuildCtx): Paragraph
   if (applyBullet && ctx.bulletPending) ctx.bulletPending.value = false
 
   return new Paragraph({
+    frame: build.frame,
     children: runs.length > 0 ? runs : [new TextRun({ text: '', font: build.font.docx.body, size })],
     spacing: { ...lineSpacing(build), before: 60, after: 120 },
     indent: baseIndent(ctx),
@@ -382,6 +403,7 @@ function codeBlockParagraphs(content: string, build: BuildCtx): Paragraph[] {
   return lines.map(
     (line, idx) =>
       new Paragraph({
+        frame: build.frame,
         children: [
           new TextRun({ text: line.length > 0 ? line : ' ', font: build.font.docx.mono, size, color: HEX(build.theme.codeText) }),
         ],
@@ -401,6 +423,8 @@ interface RunBaseProps {
   images?: Map<string, ImageAsset>
   /** Widest this image may be drawn — the column's share of the page. */
   maxImageWidthPx?: number
+  /** Drawn at exactly this width instead, when the box decides the size. */
+  exactImageWidthPx?: number
 }
 
 function runsFromInline(children: Token[], base: RunBaseProps): (TextRun | ExternalHyperlink | ImageRun)[] {
@@ -479,7 +503,7 @@ function runsFromInline(children: Token[], base: RunBaseProps): (TextRun | Exter
             new ImageRun({
               type: asset.type,
               data: asset.data,
-              transformation: fitWithin(asset, base.maxImageWidthPx),
+              transformation: fitWithin(asset, base.maxImageWidthPx, base.exactImageWidthPx),
               altText: { title: token.content || 'imagen', description: token.content || 'imagen', name: 'image' },
             }),
           )
@@ -569,11 +593,21 @@ function convertTable(tokens: Token[], cursor: Cursor, build: BuildCtx): Table {
   })
 }
 
-/** Scales an image down to fit the width available where it sits, keeping its ratio. */
-function fitWithin(asset: ImageAsset, maxWidthPx: number | undefined): { width: number; height: number } {
-  if (!maxWidthPx || asset.width <= maxWidthPx) return { width: asset.width, height: asset.height }
-  const scale = maxWidthPx / asset.width
-  return { width: Math.round(asset.width * scale), height: Math.round(asset.height * scale) }
+/**
+ * The size to draw an image at, keeping its ratio: exactly the width of the box
+ * that holds it when there is one (a canvas item, where the box decides the
+ * size), otherwise capped to the width available where it sits.
+ */
+function fitWithin(
+  asset: ImageAsset,
+  maxWidthPx: number | undefined,
+  exactWidthPx?: number,
+): { width: number; height: number } {
+  const target = exactWidthPx ?? (maxWidthPx && asset.width > maxWidthPx ? maxWidthPx : null)
+  if (target === null) return { width: asset.width, height: asset.height }
+
+  const scale = target / asset.width
+  return { width: Math.round(target), height: Math.round(asset.height * scale) }
 }
 
 const NO_BORDER = { style: BorderStyle.NONE, size: 0, color: 'FFFFFF' } as const
@@ -597,6 +631,83 @@ const CELL_VERTICAL_ALIGN = {
  * image budget: an image sized for the full page would spill out of a narrow
  * cell, so each column passes down its own share.
  */
+/** An item with no pinned height still needs one for a Word frame to exist. */
+const DEFAULT_ITEM_HEIGHT_PERCENT = 12
+
+/**
+ * A `::: lienzo` page (see canvas.ts) as Word sees it: each item becomes a
+ * paragraph pinned to an absolute spot on the page with a frame, and the page
+ * is closed with a break so the next content starts fresh.
+ *
+ * A frame is the only construct in a Word document that says "this block goes
+ * *here*", which is exactly what a canvas means. Positions arrive as
+ * percentages of the page's content box, so they're turned into twips measured
+ * from the page corner — the margin has to be added back, because the anchor is
+ * the page itself and not the text area.
+ *
+ * The alternative was rasterizing the page into a picture. It would look
+ * identical and be worthless: nobody could edit a word of it in Word, which is
+ * the only reason to export to Word at all.
+ */
+function convertCanvasPage(
+  tokens: Token[],
+  cursor: Cursor,
+  ctx: StyleCtx,
+  build: BuildCtx,
+): (Paragraph | Table)[] {
+  const out: (Paragraph | Table)[] = []
+  const { widthMm, heightMm, marginMm } = build.page
+  const contentWidthMm = widthMm - marginMm * 2
+  const contentHeightMm = heightMm - marginMm * 2
+
+  while (cursor.i < tokens.length && tokens[cursor.i].type !== 'canvas_close') {
+    const token = tokens[cursor.i]
+    if (token.type !== 'canvas_item_open') {
+      cursor.i++
+      continue
+    }
+
+    const percent = (name: string, fallback: number) => {
+      const value = Number(token.attrGet(name))
+      return Number.isFinite(value) ? value : fallback
+    }
+    const xPercent = percent('x', 0)
+    const yPercent = percent('y', 0)
+    const wPercent = percent('w', 100)
+    const hPercent = token.attrGet('h') === null ? DEFAULT_ITEM_HEIGHT_PERCENT : percent('h', DEFAULT_ITEM_HEIGHT_PERCENT)
+
+    const widthTwip = convertMillimetersToTwip((wPercent / 100) * contentWidthMm)
+    const frame = {
+      type: 'absolute' as const,
+      position: {
+        x: convertMillimetersToTwip(marginMm + (xPercent / 100) * contentWidthMm),
+        y: convertMillimetersToTwip(marginMm + (yPercent / 100) * contentHeightMm),
+      },
+      width: widthTwip,
+      height: convertMillimetersToTwip((hPercent / 100) * contentHeightMm),
+      anchor: { horizontal: FrameAnchorType.PAGE, vertical: FrameAnchorType.PAGE },
+    }
+
+    cursor.i++
+    // The frame travels down with the build context so every paragraph is born
+    // pinned. docx exposes no way to add a frame to a Paragraph after the fact.
+    out.push(
+      ...convertBlocks(tokens, cursor, 'canvas_item_close', ctx, {
+        ...build,
+        frame,
+        // The item's box decides how big its picture is, exactly as on screen.
+        imageExactWidthPx: Math.round(((wPercent / 100) * contentWidthMm * 96) / 25.4),
+      }),
+    )
+  }
+  cursor.i++ // canvas_close
+
+  // Close the page so whatever follows starts on a fresh one — unless nothing
+  // follows, where the break would just be a blank sheet at the end.
+  if (cursor.i < tokens.length) out.push(new Paragraph({ children: [new PageBreak()] }))
+  return out
+}
+
 function convertColumnsRow(
   tokens: Token[],
   cursor: Cursor,

@@ -1,0 +1,67 @@
+import JSZip from 'jszip'
+import { describe, expect, test } from 'vitest'
+import { buildDocxBlob } from './exportDocx'
+import { DEFAULT_SETTINGS } from './settings'
+
+const lines = (...ls: string[]) => ls.join('\n')
+
+async function documentXml(markdown: string): Promise<string> {
+  const blob = await buildDocxBlob(markdown, DEFAULT_SETTINGS)
+  const zip = await JSZip.loadAsync(await blob.arrayBuffer())
+  return zip.file('word/document.xml')!.async('text')
+}
+
+const CANVAS = lines(
+  '::: lienzo',
+  ':: en 10,12 30',
+  '# Entorno de producción',
+  ':: en 60,12 25',
+  'Preparado por Algoritmo',
+  ':::',
+)
+
+describe('a canvas page in Word', () => {
+  test('anchors each text block at the position it was given', async () => {
+    const xml = await documentXml(CANVAS)
+
+    // A framed paragraph is Word's own way of pinning a block to a spot.
+    expect((xml.match(/<w:framePr/g) ?? []).length).toBe(2)
+    expect(xml).toContain('Entorno de producción')
+    expect(xml).toContain('Preparado por Algoritmo')
+  })
+
+  test('positions are absolute on the page, not left to the flow', async () => {
+    const xml = await documentXml(CANVAS)
+    const frames = xml.match(/<w:framePr[^>]*\/>/g) ?? []
+
+    expect(frames).toHaveLength(2)
+    for (const frame of frames) {
+      expect(frame).toContain('w:x=')
+      expect(frame).toContain('w:y=')
+    }
+    // The second block starts further right than the first, as laid out.
+    const x = frames.map((f) => Number(f.match(/w:x="(\d+)"/)?.[1] ?? 0))
+    expect(x[1]).toBeGreaterThan(x[0])
+  })
+
+  test('ends the page, so the next content does not pile on top of it', async () => {
+    const xml = await documentXml(`${CANVAS}\n\ndespués`)
+
+    expect(xml).toContain('w:type="page"')
+    expect(xml).toContain('después')
+  })
+
+  test('leaves a flowing document exactly as it was', async () => {
+    const xml = await documentXml('# Título\n\nUn párrafo.')
+
+    expect(xml).not.toContain('<w:framePr')
+    expect(xml).toContain('Título')
+  })
+
+  test('does not end the document with a blank page', async () => {
+    // A canvas closes its page so the next block starts fresh — but when there
+    // is no next block, that break is a blank sheet at the end of the file.
+    const xml = await documentXml(CANVAS)
+    expect(xml).not.toContain('w:type="page"')
+  })
+})
