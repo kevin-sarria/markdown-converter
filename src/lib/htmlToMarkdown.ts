@@ -12,7 +12,16 @@ import {
   ROW_OPEN_PREFIX,
   type ColumnAlign,
 } from './columns'
+import {
+  CANVAS_ATTR,
+  CANVAS_NAME,
+  formatItemLine,
+  ITEM_CLASS,
+  readItem,
+} from './canvas'
 import { PAGE_BREAK_LABEL_CLASS, PAGE_BREAK_MARKER } from './markdown'
+
+const CANVAS_OPEN = `${ROW_OPEN_PREFIX} ${CANVAS_NAME}`
 
 /**
  * Converts the HTML produced by editing the WYSIWYG preview (PreviewPane.tsx)
@@ -74,18 +83,18 @@ turndownService.addRule('columnsRow', {
   replacement: (_content, node) => {
     const row = node as HTMLElement
     const columns = Array.from(row.children).filter((child) => child.classList.contains(COL_CLASS))
-    const stranded = strandedMarkdown(row)
+    const stranded = looseMarkdown(row, COL_CLASS)
 
     // Nothing but the wrapper left — there is no content to preserve.
     if (columns.length === 0) return stranded ? `\n\n${stranded}\n\n` : ''
 
     // One column is not a layout. Unwrap it rather than writing a row that
     // renders as a single full-width block anyway.
-    if (columns.length === 1) return `\n\n${joinBlocks(columnMarkdown(columns[0]), stranded)}\n\n`
+    if (columns.length === 1) return `\n\n${joinBlocks(nestedMarkdown(columns[0]), stranded)}\n\n`
 
     const widths = normalizeWidths(columns.map(readWidth))
     const body = columns
-      .map((column, i) => `${COL_PREFIX} ${widths[i]}\n${columnMarkdown(column)}`)
+      .map((column, i) => `${COL_PREFIX} ${widths[i]}\n${nestedMarkdown(column)}`)
       .join('\n')
 
     const align = (row.getAttribute(ROW_ALIGN_ATTR) ?? DEFAULT_ALIGN) as ColumnAlign
@@ -95,8 +104,31 @@ turndownService.addRule('columnsRow', {
   },
 })
 
-function columnMarkdown(column: Element): string {
-  return turndownService.turndown(column.innerHTML).trim()
+/**
+ * Canvas pages (see canvas.ts) — the same contract as the columns rule above,
+ * with a box per item instead of a width per column. Dragging an item updates
+ * its `data-x/y/w/h` attributes in the DOM; this is where those become the
+ * numbers written back into the document.
+ */
+turndownService.addRule('canvasPage', {
+  filter: (node) => node.nodeType === 1 && node.hasAttribute(CANVAS_ATTR),
+  replacement: (_content, node) => {
+    const canvas = node as HTMLElement
+    const items = Array.from(canvas.children).filter((child) => child.classList.contains(ITEM_CLASS))
+    const stranded = looseMarkdown(canvas, ITEM_CLASS)
+
+    if (items.length === 0) return stranded ? `\n\n${stranded}\n\n` : ''
+
+    const body = items
+      .map((item) => `${formatItemLine(readItem(item as HTMLElement))}\n${nestedMarkdown(item)}`)
+      .join('\n')
+
+    return `\n\n${joinBlocks(`${CANVAS_OPEN}\n${body}\n${ROW_CLOSE}`, stranded)}\n\n`
+  },
+})
+
+function nestedMarkdown(element: Element): string {
+  return turndownService.turndown(element.innerHTML).trim()
 }
 
 function readWidth(column: Element): number | null {
@@ -104,10 +136,14 @@ function readWidth(column: Element): number | null {
   return Number.isFinite(raw) && raw > 0 ? raw : null
 }
 
-/** Anything inside the row wrapper that is not a column, re-emitted after it. */
-function strandedMarkdown(row: HTMLElement): string {
-  const loose = Array.from(row.childNodes)
-    .filter((n) => !(n.nodeType === 1 && (n as Element).classList.contains(COL_CLASS)))
+/**
+ * Anything inside a container that is not one of its cells, re-emitted after
+ * it. contentEditable strands nodes there — a stray paragraph, a dragged image
+ * — and dropping them would delete content the user can't get back.
+ */
+function looseMarkdown(container: HTMLElement, cellClass: string): string {
+  const loose = Array.from(container.childNodes)
+    .filter((n) => !(n.nodeType === 1 && (n as Element).classList.contains(cellClass)))
     .map((n) => (n.nodeType === 1 ? (n as Element).outerHTML : (n.textContent ?? '')))
     .join('')
 

@@ -1,4 +1,5 @@
 import type { MarkdownIt as MarkdownItInstance, StateBlock } from 'markdown-it'
+import { fenceMarkerOf, findFenceAwareClose, type LineReader } from './containerScan'
 import {
   colOpenTag,
   isRowClose,
@@ -36,7 +37,7 @@ export function columnsPlugin(md: MarkdownItInstance): void {
 }
 
 function columnsRule(state: StateBlock, startLine: number, endLine: number, silent: boolean): boolean {
-  const lineAt = (n: number) => state.src.slice(state.bMarks[n] + state.tShift[n], state.eMarks[n])
+  const lineAt: LineReader = (n) => state.src.slice(state.bMarks[n] + state.tShift[n], state.eMarks[n])
 
   const open = parseRowOpen(lineAt(startLine))
   if (!open) return false
@@ -44,7 +45,7 @@ function columnsRule(state: StateBlock, startLine: number, endLine: number, sile
   // No closing fence means the user is still typing it. Bailing out leaves the
   // half-written row as ordinary paragraphs instead of swallowing the rest of
   // the document into a row that flickers into existence mid-keystroke.
-  const closeLine = findCloseLine(lineAt, startLine + 1, endLine)
+  const closeLine = findFenceAwareClose(lineAt, startLine + 1, endLine, isRowClose)
   if (closeLine === -1) return false
 
   const columns = collectColumns(lineAt, startLine + 1, closeLine)
@@ -72,44 +73,9 @@ function columnsRule(state: StateBlock, startLine: number, endLine: number, sile
   return true
 }
 
-type LineReader = (n: number) => string
-
-/** Opening/closing fence of a code block, so scanning can step over its contents. */
-function fenceMarkerOf(line: string): string | null {
-  const match = line.trim().match(/^(`{3,}|~{3,})/)
-  return match ? match[1] : null
-}
-
-/**
- * Finds the row's closing `:::`, ignoring anything inside a fenced code block.
- * Without that exception, documenting this very syntax inside a column — a code
- * block containing a `:::` line — would truncate the row and drop everything
- * after it.
- */
-function findCloseLine(lineAt: LineReader, from: number, endLine: number): number {
-  let fence: string | null = null
-
-  for (let n = from; n < endLine; n++) {
-    const line = lineAt(n)
-    const marker = fenceMarkerOf(line)
-
-    if (fence) {
-      if (marker && marker[0] === fence[0] && marker.length >= fence.length) fence = null
-      continue
-    }
-    if (marker) {
-      fence = marker
-      continue
-    }
-    if (isRowClose(line)) return n
-  }
-
-  return -1
-}
-
 /**
  * Splits the row body into columns at each `:: col` line, stepping over fenced
- * code blocks for the same reason findCloseLine does.
+ * code blocks for the same reason findFenceAwareClose does.
  *
  * Anything written above the first `:: col` joins the first column rather than
  * being discarded — a row is something the user is editing, and silently

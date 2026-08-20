@@ -1,5 +1,6 @@
 import MarkdownIt from 'markdown-it'
 import type { MarkdownIt as MarkdownItInstance, StateBlock } from 'markdown-it'
+import { canvasPlugin } from './canvasPlugin'
 import { columnsPlugin } from './columnsPlugin'
 import { parseImageWidthFragment } from './imageWidth'
 
@@ -24,6 +25,9 @@ export const md: MarkdownItInstance = new MarkdownIt({
 
 // Side-by-side layout (`::: columnas`) — see columnsPlugin.ts / columns.ts.
 md.use(columnsPlugin)
+
+// Freely-positioned pages (`::: lienzo`) — see canvasPlugin.ts / canvas.ts.
+md.use(canvasPlugin)
 
 // Open external links in a new tab in the live preview.
 const defaultLinkOpen =
