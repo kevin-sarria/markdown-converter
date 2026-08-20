@@ -1,5 +1,6 @@
 import MarkdownIt from 'markdown-it'
 import type { MarkdownIt as MarkdownItInstance, StateBlock } from 'markdown-it'
+import { columnsPlugin } from './columnsPlugin'
 import { parseImageWidthFragment } from './imageWidth'
 
 export const PAGE_BREAK_MARKER = '<!-- pagebreak -->'
@@ -18,6 +19,9 @@ export const md: MarkdownItInstance = new MarkdownIt({
     return `<pre class="code-block"><code>${escaped}</code></pre>`
   },
 })
+
+// Side-by-side layout (`::: columnas`) — see columnsPlugin.ts / columns.ts.
+md.use(columnsPlugin)
 
 // Open external links in a new tab in the live preview.
 const defaultLinkOpen =
