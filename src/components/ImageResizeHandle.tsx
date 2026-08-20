@@ -18,6 +18,23 @@ interface ImageResizeHandleProps {
 const MIN_WIDTH_PX = 40
 
 /**
+ * The real (unscaled) width currently applied to the image: prefer the
+ * explicit inline style set by a previous drag over getBoundingClientRect().
+ * The rect can come back smaller than that style value — `.md-preview img`
+ * has `max-width: 100%`, which visually caps an image wider than its column
+ * without touching `style.width` — so measuring the rect after a drag would
+ * silently save the *clamped* size instead of the one actually dragged to,
+ * and PDF/DOCX (re-rendered fresh from that saved width) would then disagree
+ * with what the editor showed. Falls back to the rect only for an image that
+ * has never been explicitly resized yet.
+ */
+function currentRealWidth(img: HTMLImageElement, scale: number): number {
+  const styleWidth = Number.parseFloat(img.style.width)
+  if (!Number.isNaN(styleWidth)) return styleWidth
+  return img.getBoundingClientRect().width / scale
+}
+
+/**
  * A single drag handle at the bottom-right corner of the selected image,
  * letting the user resize it directly (Word-style) instead of it being stuck
  * at whatever size it was inserted at. The chosen width is stored on the
@@ -62,7 +79,7 @@ export default function ImageResizeHandle({ selection, scale, containerRef }: Im
     const handleMouseUp = () => {
       if (!draggingRef.current) return
       draggingRef.current = null
-      const finalWidth = Math.round(selection.img.getBoundingClientRect().width / scale)
+      const finalWidth = Math.round(currentRealWidth(selection.img, scale))
       selection.img.src = withImageWidthFragment(selection.img.src, finalWidth)
       selection.syncNow()
     }
@@ -83,7 +100,7 @@ export default function ImageResizeHandle({ selection, scale, containerRef }: Im
       style={{ top: position.top, left: position.left }}
       onMouseDown={(e) => {
         e.preventDefault()
-        draggingRef.current = { startX: e.clientX, startWidth: selection.img.getBoundingClientRect().width / scale }
+        draggingRef.current = { startX: e.clientX, startWidth: currentRealWidth(selection.img, scale) }
       }}
       title="Arrastrá para cambiar el tamaño"
     />

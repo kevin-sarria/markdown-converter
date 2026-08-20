@@ -94,7 +94,13 @@ function buildPdfExportRoot(bodyNode: HTMLElement, settings: DocSettings): HTMLE
     const coverEl = document.createElement('div')
     coverEl.className = 'md-preview md-cover-page'
     coverEl.setAttribute('style', buildPreviewVarsCss(settings, { pdfMode: true }))
-    coverEl.style.height = `${page.heightMm - marginMm * 2}mm`
+    // A couple mm short of the full page-content band on purpose: at exactly
+    // one page, the forced .page-break right after it lands precisely on the
+    // next page boundary, and html2pdf's pagebreak plugin reads that as
+    // "already there" and pads in a whole *extra* blank page before actually
+    // breaking. Coming in just under the boundary keeps the break landing on
+    // page 2 like it should, with no visible gap (the cover barely notices).
+    coverEl.style.height = `${page.heightMm - marginMm * 2 - 2}mm`
     coverEl.innerHTML = renderMarkdownToHtml(cover.content)
     root.appendChild(coverEl)
 
