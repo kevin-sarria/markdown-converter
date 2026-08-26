@@ -89,6 +89,7 @@ export default function CanvasStyleBar({ editor, settings }: { editor: CanvasEdi
         onChange={(color) => setStyle({ color })}
         onClear={() => setStyle({ color: null })}
         theme={theme}
+        title="Color de la caja"
       />
 
       <div className="mx-0.5 h-4 w-px bg-white/10" />

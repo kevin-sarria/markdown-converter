@@ -89,6 +89,13 @@ export default function CanvasTextFormatBar({ editor, theme }: { editor: CanvasE
           exec('foreColor', hex)
         }}
         theme={theme}
+        title="Color del texto"
+        icon={
+          <span className="flex flex-col items-center leading-none">
+            <span className="text-[11px] font-bold">A</span>
+            <span className="block h-0.5 w-3 rounded-sm" style={{ background: format.color ?? theme.text }} />
+          </span>
+        }
         onBeforeMoreColors={() => {
           const selection = window.getSelection()
           savedRangeRef.current = selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null
