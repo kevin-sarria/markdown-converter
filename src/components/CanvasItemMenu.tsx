@@ -1,6 +1,8 @@
 import { useLayoutEffect, useState, type ReactNode, type RefObject } from 'react'
 import CanvasStyleBar from './CanvasStyleBar'
+import CanvasTextFormatBar from './CanvasTextFormatBar'
 import { rectInContainer } from '../lib/overlayPosition'
+import { getTheme } from '../lib/settings'
 import type { DocSettings } from '../lib/settings'
 import type { CanvasEditor } from '../hooks/useCanvasEditor'
 
@@ -69,7 +71,9 @@ export default function CanvasItemMenu({
       style={{ top: position.top, left: position.left }}
       onMouseDown={(e) => e.preventDefault()}
     >
-      {!editingText && (
+      {editingText ? (
+        <CanvasTextFormatBar editor={editor} theme={getTheme(settings.themeId)} />
+      ) : (
         <MenuButton title="Editar el texto (o doble clic)" onClick={editor.beginTextEditing}>
           ✎ Texto
         </MenuButton>
