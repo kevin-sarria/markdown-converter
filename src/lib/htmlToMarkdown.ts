@@ -20,6 +20,7 @@ import {
   readItem,
 } from './canvas'
 import { PAGE_BREAK_LABEL_CLASS, PAGE_BREAK_MARKER } from './markdown'
+import { rgbToHex } from './color'
 
 const CANVAS_OPEN = `${ROW_OPEN_PREFIX} ${CANVAS_NAME}`
 
@@ -158,6 +159,25 @@ turndownService.addRule('strikethrough', {
   filter: ['s', 'del'],
   replacement: (content) => `~~${content}~~`,
 })
+
+/**
+ * A per-word color override (see colorSpanPlugin.ts). execCommand('foreColor')
+ * produces either a `<span style="color: rgb(...)">` or a legacy
+ * `<font color="#hex">` depending on the browser engine — both round-trip to
+ * the same `[texto]{color=#hex}`.
+ */
+turndownService.addRule('colorSpan', {
+  filter: (node) => colorOf(node as HTMLElement) !== null,
+  replacement: (content, node) => `[${content}]{color=${colorOf(node as HTMLElement)}}`,
+})
+
+function colorOf(node: Node): string | null {
+  if (node.nodeType !== 1) return null
+  const el = node as HTMLElement
+  if (el.tagName === 'FONT') return rgbToHex(el.getAttribute('color') ?? '')
+  if (el.tagName === 'SPAN') return rgbToHex(el.style.color)
+  return null
+}
 
 turndownService.addRule('table', {
   filter: 'table',

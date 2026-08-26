@@ -1,6 +1,7 @@
 import MarkdownIt from 'markdown-it'
 import type { MarkdownIt as MarkdownItInstance, StateBlock } from 'markdown-it'
 import { canvasPlugin } from './canvasPlugin'
+import { colorSpanPlugin } from './colorSpanPlugin'
 import { columnsPlugin } from './columnsPlugin'
 import { parseImageWidthFragment } from './imageWidth'
 
@@ -28,6 +29,9 @@ md.use(columnsPlugin)
 
 // Freely-positioned pages (`::: lienzo`) — see canvasPlugin.ts / canvas.ts.
 md.use(canvasPlugin)
+
+// Per-word color override (`[texto]{color=#hex}`) — see colorSpanPlugin.ts.
+md.use(colorSpanPlugin)
 
 // Open external links in a new tab in the live preview.
 const defaultLinkOpen =
