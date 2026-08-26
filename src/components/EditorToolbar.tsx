@@ -1,6 +1,7 @@
 import { useRef, type ReactNode, type RefObject } from 'react'
 import ColumnsButton from './ColumnsButton'
 import { CONTENT_IMAGE_MAX_DIMENSION, optimizeImageFile } from '../lib/imageOptimize'
+import { useTextFormatState } from '../hooks/useTextFormatState'
 
 interface EditorToolbarProps {
   /** The contentEditable node the toolbar acts on (see PreviewPane.tsx). */
@@ -16,13 +17,25 @@ interface EditorToolbarProps {
 const PAGE_BREAK_HTML =
   '<div class="page-break" data-page-break contenteditable="false"><span class="page-break-label">Salto de página</span></div><p><br></p>'
 
-function ToolbarButton({ onClick, title, children }: { onClick: () => void; title: string; children: ReactNode }) {
+function ToolbarButton({
+  onClick,
+  title,
+  pressed,
+  children,
+}: {
+  onClick: () => void
+  title: string
+  pressed?: boolean
+  children: ReactNode
+}) {
   return (
     <button
       type="button"
       title={title}
       onClick={onClick}
-      className="flex h-7 min-w-7 items-center justify-center rounded px-1.5 text-xs font-medium text-white/70 hover:bg-white/10 hover:text-white"
+      className={`flex h-7 min-w-7 items-center justify-center rounded px-1.5 text-xs font-medium ${
+        pressed ? 'bg-white/15 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
+      }`}
     >
       {children}
     </button>
@@ -37,6 +50,7 @@ function ToolbarButton({ onClick, title, children }: { onClick: () => void; titl
  * If it's ever actually removed from browsers, that's the place to revisit.
  */
 export default function EditorToolbar({ editableRef, onEdited, onInsertColumns, onInsertCanvas }: EditorToolbarProps) {
+  const { format, refresh } = useTextFormatState()
   const imageInputRef = useRef<HTMLInputElement>(null)
   // Opening the native file picker always blurs the page, wiping the current
   // selection — save it on click so the image can still land at the cursor the
@@ -64,6 +78,7 @@ export default function EditorToolbar({ editableRef, onEdited, onInsertColumns, 
     focusEditable()
     document.execCommand(command, false, value)
     onEdited()
+    refresh()
   }
 
   const handleImageButtonClick = () => {
@@ -99,13 +114,13 @@ export default function EditorToolbar({ editableRef, onEdited, onInsertColumns, 
       // has nothing to act on.
       onMouseDown={(e) => e.preventDefault()}
     >
-      <ToolbarButton title="Negrita" onClick={() => exec('bold')}>
+      <ToolbarButton title="Negrita" pressed={format.bold} onClick={() => exec('bold')}>
         <b>N</b>
       </ToolbarButton>
-      <ToolbarButton title="Cursiva" onClick={() => exec('italic')}>
+      <ToolbarButton title="Cursiva" pressed={format.italic} onClick={() => exec('italic')}>
         <i>K</i>
       </ToolbarButton>
-      <ToolbarButton title="Tachado" onClick={() => exec('strikeThrough')}>
+      <ToolbarButton title="Tachado" pressed={format.strike} onClick={() => exec('strikeThrough')}>
         <s>S</s>
       </ToolbarButton>
 
@@ -126,10 +141,10 @@ export default function EditorToolbar({ editableRef, onEdited, onInsertColumns, 
 
       <div className="mx-1 h-5 w-px bg-white/10" />
 
-      <ToolbarButton title="Lista con viñetas" onClick={() => exec('insertUnorderedList')}>
+      <ToolbarButton title="Lista con viñetas" pressed={format.list === 'bullet'} onClick={() => exec('insertUnorderedList')}>
         •—
       </ToolbarButton>
-      <ToolbarButton title="Lista numerada" onClick={() => exec('insertOrderedList')}>
+      <ToolbarButton title="Lista numerada" pressed={format.list === 'number'} onClick={() => exec('insertOrderedList')}>
         1.—
       </ToolbarButton>
       <ToolbarButton title="Cita" onClick={() => exec('formatBlock', '<blockquote>')}>
