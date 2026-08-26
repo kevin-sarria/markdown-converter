@@ -441,6 +441,7 @@ function runsFromInline(children: Token[], base: RunBaseProps): (TextRun | Exter
   let bold = Boolean(base.bold)
   let italic = Boolean(base.italic)
   let strike = false
+  let color = base.color
   let linkHref: string | null = null
   let linkBuffer: TextRun[] = []
 
@@ -460,7 +461,7 @@ function runsFromInline(children: Token[], base: RunBaseProps): (TextRun | Exter
   for (const token of children) {
     switch (token.type) {
       case 'text':
-        if (token.content) push(new TextRun({ text: token.content, font: base.font, size: base.size, color: base.color, bold, italics: italic, strike }))
+        if (token.content) push(new TextRun({ text: token.content, font: base.font, size: base.size, color, bold, italics: italic, strike }))
         break
       case 'softbreak':
       case 'hardbreak':
@@ -483,6 +484,12 @@ function runsFromInline(children: Token[], base: RunBaseProps): (TextRun | Exter
         break
       case 's_close':
         strike = false
+        break
+      case 'color_open':
+        color = expandHex(String(token.attrGet('color') ?? base.color))
+        break
+      case 'color_close':
+        color = base.color
         break
       case 'code_inline':
         push(

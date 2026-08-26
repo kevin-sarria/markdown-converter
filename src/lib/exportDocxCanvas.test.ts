@@ -106,4 +106,22 @@ describe('the style of a canvas box in Word', () => {
     expect(xml).not.toContain('w:val="0B2A6B"')
     expect(xml).toContain('texto')
   })
+
+  test('a word wrapped in a color span overrides the box color just for that word', async () => {
+    const xml = await documentXml(
+      lines('::: lienzo', ':: en 15,48 70 color=#0b2a6b', 'normal [roja]{color=#ff0000} normal', ':::'),
+    )
+
+    expect(xml).toContain('w:val="0B2A6B"')
+    expect(xml).toContain('w:val="FF0000"')
+  })
+
+  test('a color span inside bold text keeps both', async () => {
+    const xml = await documentXml(
+      lines('::: lienzo', ':: en 10,10 60', '**[roja]{color=#ff0000} y negrita**', ':::'),
+    )
+
+    expect(xml).toContain('<w:b/>')
+    expect(xml).toContain('w:val="FF0000"')
+  })
 })
