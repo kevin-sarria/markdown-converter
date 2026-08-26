@@ -1,5 +1,6 @@
 import { CANVAS_ALIGNS, MAX_SIZE_PT, MIN_SIZE_PT, type CanvasAlign, type CanvasFont } from '../lib/canvas'
 import { getTheme } from '../lib/settings'
+import ColorPicker from './ColorPicker'
 import type { CanvasEditor } from '../hooks/useCanvasEditor'
 import type { DocSettings } from '../lib/settings'
 
@@ -39,13 +40,6 @@ const SIZE_STEPS = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 40, 48, 60, 72
 export default function CanvasStyleBar({ editor, settings }: { editor: CanvasEditor; settings: DocSettings }) {
   const { style, setStyle } = editor
   const theme = getTheme(settings.themeId)
-
-  const swatches = [
-    { color: theme.heading, title: 'Color de títulos del tema' },
-    { color: theme.text, title: 'Color de texto del tema' },
-    { color: theme.muted, title: 'Color atenuado del tema' },
-    { color: theme.accent, title: 'Color de acento del tema' },
-  ]
 
   const stepSize = (direction: 1 | -1) => {
     const current = style.sizePt ?? settings.fontSizePt
@@ -90,33 +84,12 @@ export default function CanvasStyleBar({ editor, settings }: { editor: CanvasEdi
 
       <div className="mx-0.5 h-4 w-px bg-white/10" />
 
-      {swatches.map(({ color, title }) => (
-        <button
-          key={color}
-          type="button"
-          title={title}
-          onClick={() => setStyle({ color })}
-          className={`h-4 w-4 rounded-sm border ${
-            style.color?.toLowerCase() === color.toLowerCase() ? 'border-white' : 'border-white/25'
-          }`}
-          style={{ background: color }}
-        />
-      ))}
-      <input
-        type="color"
-        value={style.color ?? '#000000'}
-        title="Otro color"
-        onChange={(e) => setStyle({ color: e.target.value })}
-        className="h-4 w-5 cursor-pointer rounded-sm border border-white/25 bg-transparent p-0"
+      <ColorPicker
+        value={style.color}
+        onChange={(color) => setStyle({ color })}
+        onClear={() => setStyle({ color: null })}
+        theme={theme}
       />
-      <button
-        type="button"
-        title="Volver al color del documento"
-        onClick={() => setStyle({ color: null })}
-        className="flex h-6 w-6 items-center justify-center rounded text-xs text-white/50 hover:bg-white/10 hover:text-white"
-      >
-        ⌫
-      </button>
 
       <div className="mx-0.5 h-4 w-px bg-white/10" />
 
