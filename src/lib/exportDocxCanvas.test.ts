@@ -21,27 +21,40 @@ const CANVAS = lines(
 )
 
 describe('a canvas page in Word', () => {
-  test('anchors each text block at the position it was given', async () => {
+  test('anchors each text block as its own floating shape', async () => {
     const xml = await documentXml(CANVAS)
 
-    // A framed paragraph is Word's own way of pinning a block to a spot.
-    expect((xml.match(/<w:framePr/g) ?? []).length).toBe(2)
+    // wp:anchor is DrawingML's floating object — the same mechanism a real
+    // Word "Insert > Text Box" produces, and the same one already proven to
+    // render correctly for floating images in this exporter.
+    expect((xml.match(/<wp:anchor/g) ?? []).length).toBe(2)
     expect(xml).toContain('Entorno de producción')
     expect(xml).toContain('Preparado por Algoritmo')
   })
 
-  test('positions are absolute on the page, not left to the flow', async () => {
+  test('positions are absolute on the page and never wrap with the flow', async () => {
     const xml = await documentXml(CANVAS)
-    const frames = xml.match(/<w:framePr[^>]*\/>/g) ?? []
 
-    expect(frames).toHaveLength(2)
-    for (const frame of frames) {
-      expect(frame).toContain('w:x=')
-      expect(frame).toContain('w:y=')
-    }
+    // relativeFrom="page" appears on both the horizontal and vertical position
+    // of each of the two shapes.
+    expect((xml.match(/relativeFrom="page"/g) ?? []).length).toBe(4)
+    // wrapNone is what makes the shape float independently of surrounding
+    // text — nothing reflows around it, ever, regardless of what's nearby.
+    expect((xml.match(/<wp:wrapNone\/>/g) ?? []).length).toBe(2)
+
     // The second block starts further right than the first, as laid out.
-    const x = frames.map((f) => Number(f.match(/w:x="(\d+)"/)?.[1] ?? 0))
+    const x = [...xml.matchAll(/<wp:positionH[^>]*><wp:posOffset>([\d.]+)/g)].map((m) => Number(m[1]))
+    expect(x).toHaveLength(2)
     expect(x[1]).toBeGreaterThan(x[0])
+  })
+
+  test('does not use the old flow-interacting frame mechanism', async () => {
+    // w:framePr (legacy Word 6 frames) still participates in text flow — two
+    // frames placed a few percent apart, completely normal in a real cover,
+    // end up overlapping and Word has to reflow lines to resolve it. That
+    // reflow is what looked like "the text moves every time I reopen it".
+    const xml = await documentXml(CANVAS)
+    expect(xml).not.toContain('<w:framePr')
   })
 
   test('ends the page, so the next content does not pile on top of it', async () => {
@@ -54,7 +67,7 @@ describe('a canvas page in Word', () => {
   test('leaves a flowing document exactly as it was', async () => {
     const xml = await documentXml('# Título\n\nUn párrafo.')
 
-    expect(xml).not.toContain('<w:framePr')
+    expect(xml).not.toContain('<wp:anchor')
     expect(xml).toContain('Título')
   })
 

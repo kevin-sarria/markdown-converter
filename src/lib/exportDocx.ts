@@ -5,8 +5,8 @@ import {
   Document,
   ExternalHyperlink,
   Footer,
-  FrameAnchorType,
   Header,
+  HorizontalPositionRelativeFrom,
   ImageRun,
   LevelFormat,
   Packer,
@@ -17,9 +17,11 @@ import {
   TableCell,
   TableRow,
   TextRun,
+  TextWrappingType,
   VerticalAlign,
+  VerticalPositionRelativeFrom,
   WidthType,
-  type IFrameOptions,
+  WpsShapeRun,
   type ILevelsOptions,
 } from 'docx'
 import { saveAs } from 'file-saver'
@@ -185,10 +187,6 @@ interface BuildCtx {
   imageExactWidthPx?: number
   /** The page this document is laid out on, for canvas positioning. */
   page: { widthMm: number; heightMm: number; marginMm: number }
-  /** Pins every paragraph produced here to one spot on the page — set while
-   * converting a canvas item, absent everywhere else. Paragraphs that share a
-   * frame definition are a single frame to Word. */
-  frame?: IFrameOptions
   /** The canvas box's own look, applied to everything inside it. Absent means
    * "follow the document", exactly as it does on screen. */
   boxStyle?: {
@@ -356,7 +354,6 @@ function headingParagraph(inline: Token, level: number, build: BuildCtx): Paragr
     exactImageWidthPx: build.imageExactWidthPx,
   })
   return new Paragraph({
-    frame: build.frame,
     alignment: box?.align ?? undefined,
     children: runs,
     spacing: { before: 320, after: 160 },
@@ -385,7 +382,6 @@ function bodyParagraph(inline: Token, ctx: StyleCtx, build: BuildCtx): Paragraph
   if (applyBullet && ctx.bulletPending) ctx.bulletPending.value = false
 
   return new Paragraph({
-    frame: build.frame,
     alignment: box?.align ?? undefined,
     children: runs.length > 0 ? runs : [new TextRun({ text: '', font: build.font.docx.body, size })],
     spacing: { ...lineSpacing(build), before: 60, after: 120 },
@@ -417,7 +413,6 @@ function codeBlockParagraphs(content: string, build: BuildCtx): Paragraph[] {
   return lines.map(
     (line, idx) =>
       new Paragraph({
-        frame: build.frame,
         children: [
           new TextRun({ text: line.length > 0 ? line : ' ', font: build.font.docx.mono, size, color: HEX(build.theme.codeText) }),
         ],
@@ -687,23 +682,51 @@ function expandHex(color: string): string {
   return full.toUpperCase()
 }
 
-/** An item with no pinned height still needs one for a Word frame to exist. */
+/** An item with no pinned height still needs a starting size — see convertCanvasPage. */
 const DEFAULT_ITEM_HEIGHT_PERCENT = 12
+
+/** mm at 96 DPI, the pixel grid docx.js's own transformations already use (see imageExactWidthPx). */
+function mmToPx(mm: number): number {
+  return Math.round((mm * 96) / 25.4)
+}
+
+/** mm to EMU (English Metric Units) — the unit DrawingML positions are written in. */
+function mmToEmu(mm: number): number {
+  return Math.round(mm * 36000)
+}
 
 /**
  * A `::: lienzo` page (see canvas.ts) as Word sees it: each item becomes a
- * paragraph pinned to an absolute spot on the page with a frame, and the page
- * is closed with a break so the next content starts fresh.
+ * floating DrawingML shape (`WpsShapeRun`) anchored to an absolute point on
+ * the page, and the page is closed with a break so the next content starts
+ * fresh.
  *
- * A frame is the only construct in a Word document that says "this block goes
- * *here*", which is exactly what a canvas means. Positions arrive as
- * percentages of the page's content box, so they're turned into twips measured
- * from the page corner — the margin has to be added back, because the anchor is
- * the page itself and not the text area.
+ * This used to pin each item with `w:framePr`, the legacy Word 6 frame
+ * mechanism — and that was the actual cause of covers "moving every time
+ * they're reopened". A frame still participates in the surrounding text flow
+ * (Word's default is to wrap body text around it), so two items placed only a
+ * few percent apart — completely ordinary in a real cover — end up with
+ * overlapping frames, and Word/LibreOffice have to resolve that overlap by
+ * reflowing lines. Which line lands where then depends on the app, the fonts
+ * installed, and any nearby edit: exactly the "desfase" the export was
+ * producing. Confirmed by reproducing it — a cover built from real layout
+ * numbers came out of this exporter with its own frames already overlapping,
+ * before Word ever touched it.
  *
- * The alternative was rasterizing the page into a picture. It would look
- * identical and be worthless: nobody could edit a word of it in Word, which is
- * the only reason to export to Word at all.
+ * A floating shape with `wrap: NONE` never participates in flow: it paints at
+ * its anchor and nothing else on the page is aware of it, which is the actual
+ * guarantee a canvas page is supposed to give. It's the same anchoring
+ * mechanism (`wp:anchor`) already used for a floating image elsewhere in this
+ * file, just carrying a text body instead of a picture — confirmed to render
+ * identically in Word and LibreOffice, and to hold its position exactly
+ * across a save-and-reopen cycle.
+ *
+ * Positions and sizes arrive as percentages of the page's content box, so
+ * they're computed as real page coordinates in millimetres first (adding the
+ * margin back in, since the anchor is the page corner, not the text area),
+ * then converted to whatever unit each field wants: EMU for the shape's
+ * anchor position, pixels for its own width/height (matching the pixel grid
+ * `imageExactWidthPx` already uses for images).
  */
 function convertCanvasPage(
   tokens: Token[],
@@ -716,6 +739,7 @@ function convertCanvasPage(
   const contentWidthMm = widthMm - marginMm * 2
   const contentHeightMm = heightMm - marginMm * 2
 
+  let zIndex = 1
   while (cursor.i < tokens.length && tokens[cursor.i].type !== 'canvas_close') {
     const token = tokens[cursor.i]
     if (token.type !== 'canvas_item_open') {
@@ -733,29 +757,40 @@ function convertCanvasPage(
     const yPercent = percent('y', 0)
     const wPercent = percent('w', 100)
     const hPercent = token.attrGet('h') === null ? DEFAULT_ITEM_HEIGHT_PERCENT : percent('h', DEFAULT_ITEM_HEIGHT_PERCENT)
-
-    const widthTwip = convertMillimetersToTwip((wPercent / 100) * contentWidthMm)
-    const frame = {
-      type: 'absolute' as const,
-      position: {
-        x: convertMillimetersToTwip(marginMm + (xPercent / 100) * contentWidthMm),
-        y: convertMillimetersToTwip(marginMm + (yPercent / 100) * contentHeightMm),
-      },
-      width: widthTwip,
-      height: convertMillimetersToTwip((hPercent / 100) * contentHeightMm),
-      anchor: { horizontal: FrameAnchorType.PAGE, vertical: FrameAnchorType.PAGE },
-    }
+    const widthMmBox = (wPercent / 100) * contentWidthMm
 
     cursor.i++
-    // The frame travels down with the build context so every paragraph is born
-    // pinned. docx exposes no way to add a frame to a Paragraph after the fact.
+    const blocks = convertBlocks(tokens, cursor, 'canvas_item_close', ctx, {
+      ...build,
+      boxStyle,
+      // The item's box decides how big its picture is, exactly as on screen.
+      imageExactWidthPx: mmToPx(widthMmBox),
+    })
+
     out.push(
-      ...convertBlocks(tokens, cursor, 'canvas_item_close', ctx, {
-        ...build,
-        frame,
-        boxStyle,
-        // The item's box decides how big its picture is, exactly as on screen.
-        imageExactWidthPx: Math.round(((wPercent / 100) * contentWidthMm * 96) / 25.4),
+      new Paragraph({
+        children: [
+          new WpsShapeRun({
+            type: 'wps',
+            transformation: { width: mmToPx(widthMmBox), height: mmToPx((hPercent / 100) * contentHeightMm) },
+            floating: {
+              horizontalPosition: {
+                relative: HorizontalPositionRelativeFrom.PAGE,
+                offset: mmToEmu(marginMm + (xPercent / 100) * contentWidthMm),
+              },
+              verticalPosition: {
+                relative: VerticalPositionRelativeFrom.PAGE,
+                offset: mmToEmu(marginMm + (yPercent / 100) * contentHeightMm),
+              },
+              wrap: { type: TextWrappingType.NONE },
+              zIndex: zIndex++,
+            },
+            // A canvas item can hold any Markdown block (canvas.ts), including a
+            // table — valid OOXML inside a text box's content, docx's own type
+            // here just doesn't say so, since Tables are the rare case.
+            children: blocks as Paragraph[],
+          }),
+        ],
       }),
     )
   }
