@@ -114,6 +114,33 @@
   font-size: 0.88em;
 }
 
+/* Inline code is its own little box. When a plain inline <code> wraps onto a
+   second line, html2canvas (the PDF) paints its grey background as ONE
+   rectangle around both fragments, and that rectangle covers the words beside
+   it — in a table cell "y", "con" or "Revisar" simply vanished from the PDF.
+   As an inline-block its background is exactly its own rectangle: it moves to
+   the next line whole, or, if it is longer than the line, wraps inside itself
+   (`anywhere` lets a long identifier or URL break at any character). */
+.md-preview :not(pre) > code {
+  display: inline-block;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+  /* Inherited, the body line-height plus the padding made the box taller than
+     a line of text, and its background then clipped the descenders of the line
+     above in the PDF ("Cualquiera" read as "Cualauiera"). */
+  line-height: 1.35;
+}
+
+/* html2canvas draws text a few pixels lower than the browser lays it out, and
+   paints inline-blocks after the text around them. On screen there are ~4px
+   between a line's descenders and the code box on the line below; in the PDF
+   that box still covered the tails of "Aplicar" or "Revisar". A little extra
+   room above every code box, in the PDF only, keeps those letters whole. */
+.pdf-export .md-preview :not(pre) > code {
+  margin-top: 0.35em;
+}
+
 .md-preview pre {
   margin: 1em 0;
   border-radius: 8px;
@@ -133,6 +160,16 @@
   line-height: 1.5;
 }
 
+/* A code line longer than the page wraps instead of scrolling. On screen a
+   scrollbar would do, but the PDF is a picture of the page: whatever sits past
+   the right edge of a scrolling <pre> is simply cut off, and a delivered manual
+   loses half a command or a connection string without anyone noticing. */
+.md-preview pre,
+.md-preview pre code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .md-preview img {
   max-width: 100%;
   border-radius: 6px;
@@ -150,6 +187,21 @@
   border: 1px solid var(--p-border);
   padding: 0.5em 0.8em;
   text-align: left;
+}
+
+/* A table sizes its columns from the longest unbreakable run in each cell, and
+   the `break-word` inherited from .md-preview does not count there — only
+   `anywhere` does. A bare URL (https://limpieza-inteligente-qa.diamante.com.co/api)
+   pushed a table past the page; so did a long identifier in inline code
+   (`ServicioActividadEjecucion.SinIniciarSiguienteAvisadoFin`, 976px on a
+   644px page), which the inline code rule above already covers. Either way the
+   right-hand columns spilled off the sheet, unreadable on screen and cut off
+   in the PDF. Only links and code get it: on the whole cell it lets the table
+   squeeze prose columns too, and ordinary words come out split as
+   "Sincroniza|ción". */
+.md-preview th a,
+.md-preview td a {
+  overflow-wrap: anywhere;
 }
 
 .md-preview th {
