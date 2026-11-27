@@ -1,5 +1,6 @@
+import html2canvas from 'html2canvas'
 import html2pdf from 'html2pdf.js'
-import type { jsPDF } from 'jspdf'
+import { jsPDF } from 'jspdf'
 import { hasCoverContent } from './coverPage'
 import { applyHeaderFooterWatermark } from './pdfHeaderFooter'
 import { renderMarkdownToHtml } from './markdown'
@@ -32,7 +33,7 @@ function pdfOptions(settings: DocSettings, fileName: string) {
       backgroundColor: null,
     },
     jsPDF: {
-      unit: 'mm',
+      unit: 'mm' as const,
       format: settings.pageSize,
       orientation: 'portrait' as const,
     },
@@ -55,6 +56,51 @@ function mountOffscreen(node: HTMLElement): HTMLElement {
   wrapper.appendChild(node)
   document.body.appendChild(wrapper)
   return wrapper
+}
+
+const BULLETS: Record<string, string> = { disc: '•', circle: '◦', square: '▪' }
+
+function orderedMarker(n: number, type: string): string {
+  if (type === 'lower-alpha' || type === 'upper-alpha') {
+    let s = ''
+    for (let v = n; v > 0; v = Math.floor((v - 1) / 26)) s = String.fromCharCode(97 + ((v - 1) % 26)) + s
+    return `${type === 'upper-alpha' ? s.toUpperCase() : s}.`
+  }
+  return `${n}.`
+}
+
+/**
+ * Turns every list marker of the PDF copy into real text. html2canvas paints
+ * `::marker` with its own vertical formula, which put the step numbers of a
+ * manual well above their line ("¹·Abra la dirección…"). As a real <span> the
+ * number is laid out by the browser and drawn like any other text, on the same
+ * baseline. Needs the node mounted, to read each list's computed style; the
+ * on-screen preview is untouched, only the export copy changes.
+ */
+function materializeListMarkers(root: HTMLElement) {
+  root.querySelectorAll('ol, ul').forEach((list) => {
+    const style = getComputedStyle(list)
+    const type = style.listStyleType
+    if (type === 'none') return
+    const ordered = list.tagName === 'OL'
+    let n = ordered ? (list as HTMLOListElement).start || 1 : 0
+    for (const li of Array.from(list.children)) {
+      if (li.tagName !== 'LI') continue
+      const value = Number(li.getAttribute('value'))
+      if (ordered && value) n = value
+      const marker = document.createElement('span')
+      marker.className = 'md-li-marker'
+      marker.textContent = ordered ? orderedMarker(n, type) : (BULLETS[type] ?? '•')
+      // A loose list wraps each item in <p>, whose top margin would leave a
+      // marker anchored to the <li> floating above the text.
+      const first = li.firstElementChild
+      const host = first && first.tagName === 'P' && li.firstChild === first ? first : li
+      host.classList.add('md-li-marker-host')
+      host.prepend(marker)
+      n++
+    }
+    list.classList.add('md-list-materialized')
+  })
 }
 
 /**
@@ -114,6 +160,129 @@ function buildPdfExportRoot(bodyNode: HTMLElement, settings: DocSettings): HTMLE
   return root
 }
 
+/**
+ * Tallest strip, in device pixels, captured in one html2canvas pass. Browsers
+ * refuse canvases past a size limit (Chrome: 65 535px tall; Firefox: 32 767px;
+ * Safari also caps the total area) and hand back a BLANK canvas instead of an
+ * error. html2pdf captures the whole document as one canvas, so a long manual
+ * (01a: 37 290 CSS px × scale 2 = 74 580px) came out as 45 white pages. Capturing
+ * a few pages at a time keeps every canvas well under every browser's limit.
+ */
+const MAX_STRIP_HEIGHT_PX = 16384
+
+interface PageSize {
+  k: number
+  inner: { width: number; height: number; ratio: number }
+}
+
+/**
+ * Builds the PDF from `exportRoot` page by page instead of through html2pdf's
+ * single full-document canvas (see MAX_STRIP_HEIGHT_PX).
+ *
+ * html2pdf still lays the document out: `toContainer()` clones it at the page's
+ * inner width and its pagebreak plugin pushes `.page-break` / avoid-all elements
+ * onto the next page. Only the capture changes — each strip is an exact whole
+ * number of pages, cut at the same pixel rows html2pdf's own toPdf would use, so
+ * the pages come out identical to before, just without the size ceiling.
+ *
+ * html2pdf adds clickable links in its toPdf, which is skipped here, so they are
+ * re-added at the end the same way its hyperlinks plugin does.
+ */
+async function renderPdf(exportRoot: HTMLElement, settings: DocSettings, fileName: string): Promise<jsPDF> {
+  const opts = pdfOptions(settings, fileName)
+  const worker = html2pdf().set(opts).from(exportRoot).toContainer()
+  const container = (await worker.get('container')) as HTMLElement
+  const overlay = (await worker.get('overlay')) as HTMLElement
+  const pageSize = (await worker.get('pageSize')) as PageSize
+
+  try {
+    const scale = opts.html2canvas.scale
+    const containerRect = container.getBoundingClientRect()
+    const cssWidth = container.offsetWidth
+    const cssHeight = container.scrollHeight
+    const pxWidth = Math.floor(cssWidth * scale)
+    const pxPageHeight = Math.floor(pxWidth * pageSize.inner.ratio)
+    const pxFullHeight = Math.floor(cssHeight * scale)
+    const nPages = Math.max(1, Math.ceil(pxFullHeight / pxPageHeight))
+    const pagesPerStrip = Math.max(1, Math.floor(MAX_STRIP_HEIGHT_PX / pxPageHeight))
+
+    const pdf = new jsPDF(opts.jsPDF)
+    const pageCanvas = document.createElement('canvas')
+    const pageCtx = pageCanvas.getContext('2d')
+    if (!pageCtx) throw new Error('No se pudo crear el lienzo para el PDF.')
+
+    for (let first = 0; first < nPages; first += pagesPerStrip) {
+      const count = Math.min(pagesPerStrip, nPages - first)
+      const yCss = (first * pxPageHeight) / scale
+      const heightCss = Math.min((count * pxPageHeight) / scale, cssHeight - yCss)
+      // x/y are offsets from the element's own top-left corner (html2canvas
+      // adds the element's bounds to them).
+      const strip = await html2canvas(container, { ...opts.html2canvas, y: yCss, height: heightCss, width: cssWidth })
+
+      for (let i = 0; i < count; i++) {
+        const top = i * pxPageHeight
+        const h = Math.min(pxPageHeight, strip.height - top)
+        if (h <= 0) break
+        pageCanvas.width = strip.width
+        pageCanvas.height = h
+        pageCtx.fillStyle = 'white'
+        pageCtx.fillRect(0, 0, strip.width, h)
+        pageCtx.drawImage(strip, 0, top, strip.width, h, 0, 0, strip.width, h)
+
+        if (first + i > 0) pdf.addPage()
+        // A short last page keeps its real height instead of being stretched.
+        const heightMm = h === pxPageHeight ? pageSize.inner.height : (h * pageSize.inner.width) / strip.width
+        const imgData = pageCanvas.toDataURL(`image/${opts.image.type}`, opts.image.quality)
+        pdf.addImage(imgData, opts.image.type.toUpperCase(), opts.margin[1], opts.margin[0], pageSize.inner.width, heightMm)
+      }
+      // Free the strip's pixels before capturing the next one.
+      strip.width = 0
+      strip.height = 0
+    }
+
+    addLinks(pdf, container, containerRect, pageSize, opts.margin)
+    return pdf
+  } finally {
+    overlay.remove()
+  }
+}
+
+/** Same placement html2pdf's hyperlinks plugin uses: every rect of every <a>. */
+function addLinks(
+  pdf: jsPDF,
+  container: HTMLElement,
+  containerRect: DOMRect,
+  pageSize: PageSize,
+  margin: [number, number, number, number],
+) {
+  const toUnit = (px: number) => (px * 72) / 96 / pageSize.k
+  const nPages = pdf.getNumberOfPages()
+  container.querySelectorAll('a[href]').forEach((link) => {
+    const href = (link as HTMLAnchorElement).href
+    for (const r of Array.from(link.getClientRects())) {
+      const top = toUnit(r.top - containerRect.top)
+      const page = Math.floor(top / pageSize.inner.height) + 1
+      if (page > nPages) continue
+      pdf.setPage(page)
+      pdf.link(
+        margin[1] + toUnit(r.left - containerRect.left),
+        margin[0] + (top % pageSize.inner.height),
+        toUnit(r.width),
+        toUnit(r.height),
+        { url: href },
+      )
+    }
+  })
+  pdf.setPage(nPages)
+}
+
+async function buildPdf(exportRoot: HTMLElement, settings: DocSettings, fileName: string): Promise<jsPDF> {
+  const pdf = await renderPdf(exportRoot, settings, fileName)
+  const startPage = hasCoverContent(settings.coverPage) ? 2 : 1
+  applyHeaderFooterWatermark(pdf, settings, startPage)
+  return pdf
+}
+
 export async function exportToPdf(
   node: HTMLElement,
   settings: DocSettings,
@@ -123,12 +292,9 @@ export async function exportToPdf(
   const exportRoot = buildPdfExportRoot(bodyNode, settings)
   const wrapper = mountOffscreen(exportRoot)
   try {
-    const worker = html2pdf().set(pdfOptions(settings, fileName)).from(exportRoot).toPdf()
-    await worker.get('pdf').then((pdf: jsPDF) => {
-      const startPage = hasCoverContent(settings.coverPage) ? 2 : 1
-      applyHeaderFooterWatermark(pdf, settings, startPage)
-    })
-    await worker.save()
+    materializeListMarkers(exportRoot)
+    const pdf = await buildPdf(exportRoot, settings, fileName)
+    pdf.save(`${fileName}.pdf`)
   } finally {
     document.body.removeChild(wrapper)
   }
@@ -153,13 +319,9 @@ export async function buildPdfBlob(
   const wrapper = mountOffscreen(exportRoot)
 
   try {
-    const worker = html2pdf().set(pdfOptions(settings, fileName)).from(exportRoot).toPdf()
-    await worker.get('pdf').then((pdf: jsPDF) => {
-      const startPage = hasCoverContent(settings.coverPage) ? 2 : 1
-      applyHeaderFooterWatermark(pdf, settings, startPage)
-    })
-    const blob = (await worker.outputPdf('blob')) as Blob
-    return blob
+    materializeListMarkers(exportRoot)
+    const pdf = await buildPdf(exportRoot, settings, fileName)
+    return pdf.output('blob')
   } finally {
     document.body.removeChild(wrapper)
   }

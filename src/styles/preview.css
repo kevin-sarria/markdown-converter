@@ -79,6 +79,43 @@
   padding-left: 1.6em;
 }
 
+/* Tailwind's preflight resets every list in the app to `list-style: none`, and
+   nothing gave the document's lists their markers back: the numbered steps of a
+   manual ("1. Abra… 2. Escriba…") lost their numbers on screen and in the PDF
+   (the HTML export, which doesn't load Tailwind, still had them). */
+.md-preview ul {
+  list-style-type: disc;
+}
+.md-preview ul ul {
+  list-style-type: circle;
+}
+.md-preview ul ul ul {
+  list-style-type: square;
+}
+.md-preview ol {
+  list-style-type: decimal;
+}
+.md-preview ol ol {
+  list-style-type: lower-alpha;
+}
+
+/* PDF copy only: markers turned into real text by exportPdf.ts
+   (materializeListMarkers), because html2canvas draws ::marker above its line.
+   The span sits in the same spot the native marker did. */
+.md-preview .md-list-materialized {
+  list-style: none;
+}
+.md-li-marker-host {
+  position: relative;
+}
+.md-li-marker {
+  position: absolute;
+  right: 100%;
+  margin-right: 0.45em;
+  white-space: nowrap;
+  color: var(--p-accent);
+}
+
 .md-preview li {
   margin: 0.3em 0;
 }
